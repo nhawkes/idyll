@@ -903,6 +903,7 @@ class Live {
           }
           break;
         }
+        if (node.__pendingText) node.run.queue.find((item) => item.slot === v.slot).node = v.node;
         this.fold.nodes.set(v.node, node);
         break;
       }
@@ -910,14 +911,18 @@ class Live {
         const bound = this.mustNode(v.node, 'set-text');
         if (!bound) break;
         if (bound.__pendingText) {
-          // A slot claimed inside a merged SSR text node: now that the value (and so
-          // its length) is known, split the node and isolate the slot's own text node.
-          // SSR text equals this value by construction (same fold), so the split is
-          // deterministic; runs resolve left-to-right because SetTexts arrive in
-          // document order.
-          const textNode = resolvePendingText(bound, v.text);
-          this.fold.nodes.set(v.node, textNode);
-          textNode.textContent = v.text;
+          // A slot claimed inside a merged SSR text node. Its value is one of several the
+          // run needs before the node can be split — a one-shot `(expr)` and a signal's
+          // first value reach here in different passes, not in document order — so it
+          // is held until the run is whole, then every slot is split out at once.
+          bound.run.values.set(bound.slot, v.text);
+          const nodes = resolvePendingRun(bound.run);
+          if (!nodes) break;
+          for (const item of bound.run.queue) {
+            if (item.type !== 'slot') continue;
+            const pending = this.fold.nodes.get(item.node);
+            if (pending?.__pendingText) this.fold.nodes.set(item.node, nodes.get(item.slot));
+          }
           break;
         }
         bound.textContent = v.text;
@@ -1350,7 +1355,7 @@ class Live {
       if (node.tag === 'text' || node.tag === 'text-slot') {
         if (!run) {
           if (real?.nodeType === Node.TEXT_NODE) {
-            run = { node: real, offset: 0, blocked: false, queue: [] };
+            run = { node: real, offset: 0, blocked: false, queue: [], values: new Map() };
           } else if (node.tag === 'text-slot') {
             // Empty SSR text produced no node — materialize one to claim.
             const t = document.createTextNode('');
@@ -1477,35 +1482,36 @@ function skipSubtree(ir, cursor, count) {
   }
 }
 
-/** Resolve a pending merged-text claim now that the slot's value is known: consume the
- * run's queued statics, then split the live text node to isolate the slot's own node. */
-function resolvePendingText(pending, value) {
-  const run = pending.run;
-  while (run.queue.length) {
-    const item = run.queue.shift();
+/** Split a merged-text claim once every slot in the run has its value: walk the items in
+ * document order, statics advancing the offset, each slot cutting its own node out of the
+ * live text and taking its value. The same split whatever order the values arrived in.
+ * `null` while a value is still outstanding. SSR text equals the values by construction
+ * (same fold), so each cut lands exactly. */
+function resolvePendingRun(run) {
+  if (run.done) return run.done;
+  for (const item of run.queue) {
+    if (item.type === 'slot' && !run.values.has(item.slot)) return null;
+  }
+  const nodes = new Map();
+  let node = run.node;
+  let offset = run.offset;
+  for (const item of run.queue) {
     if (item.type === 'static') {
-      run.offset += item.text.length;
+      offset += item.text.length;
       continue;
     }
-    if (item.slot !== pending.slot) {
-      console.error('idyll runtime: text run resolved out of order');
+    const value = run.values.get(item.slot);
+    if (offset > 0) {
+      node = node.splitText(offset);
+      offset = 0;
     }
-    let node = run.node;
-    if (run.offset > 0) {
-      node = node.splitText(run.offset);
-      run.node = node;
-      run.offset = 0;
-    }
-    if (value.length < node.data.length) {
-      run.node = node.splitText(value.length);
-      run.offset = 0;
-    } else {
-      run.node = node;
-      run.offset = node.data.length;
-    }
-    return node;
+    const own = node;
+    if (value.length < node.data.length) node = node.splitText(value.length);
+    own.textContent = value;
+    nodes.set(item.slot, own);
   }
-  return run.node; // shouldn't happen; degrade to the whole node
+  run.done = nodes;
+  return nodes;
 }
 
 /** The **claim plan**: since `mount` returns the whole self-contained stream up front,

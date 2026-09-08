@@ -11,7 +11,7 @@ use std::process::Command;
 use idyll::component::spawn_live;
 use idyll::driver::DomCommand;
 use idyll::template::{Template, TplNode};
-use idyll::{fold_html, CommandBufferDriver, Ctx, Runtime, Setup};
+use idyll::{fold_html, live_view, CommandBufferDriver, Ctx, Never, Runtime, Setup};
 use serde_json::json;
 use todo_app::{plot, prose, todos, Msg, PageSeed, PlotMsg, ProseMsg};
 
@@ -200,6 +200,18 @@ fn wire_command(command: &DomCommand) -> serde_json::Value {
     }
 }
 
+/// Two dynamic texts in one run — a signal and a one-shot `(expr)` — with statics between
+/// and around them. SSR merges the run into one text node; the two values reach the claim
+/// in different passes, so the split must not depend on their order.
+async fn mixed_run(ctx: Ctx<Setup, Never>) -> idyll::Result {
+    let busy = ctx.mutable_signal(2u32);
+    Ok(ctx
+        .render(live_view! {
+            div { "busy " $busy "/" (8u32.to_string()) " (" span { "25%" } ")" }
+        })
+        .await?)
+}
+
 fn npm() -> &'static str {
     if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
@@ -236,6 +248,7 @@ fn the_client_fold_converges_with_the_server_fold() {
         ("todos", mount_stream::<Msg, _>(|ctx| todos(ctx, seeded_data())), false),
         ("prose", mount_stream::<ProseMsg, _>(|ctx| prose(ctx, seeded_data())), false),
         ("plot", mount_stream::<PlotMsg, _>(|ctx| plot(ctx, seeded_data())), false),
+        ("mixed-run", mount_stream::<Never, _>(mixed_run), false),
         // The driven stream: mount plus the teardown ops (detach, moves while
         // detached, re-attach) both folds must agree on — the region where every
         // divergence found by review has lived. Build-only: a post-interaction fold
