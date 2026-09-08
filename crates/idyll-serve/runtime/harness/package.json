@@ -1,0 +1,9 @@
+{
+  "name": "idyll-fold-harness",
+  "private": true,
+  "type": "module",
+  "description": "Drives the real runtime.js fold against jsdom: build/claim convergence with the server fold. Run via `cargo test -p idyll-serve --test client_fold`.",
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}

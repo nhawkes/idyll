@@ -1,0 +1,143 @@
+{
+  "nodes": [
+    {
+      "name": "Comment",
+      "fields": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        },
+        {
+          "name": "text",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Post",
+      "fields": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        },
+        {
+          "name": "title",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "author",
+          "ty": {
+            "kind": "ref",
+            "node": "User"
+          }
+        },
+        {
+          "name": "comments",
+          "ty": {
+            "kind": "list",
+            "of": {
+              "kind": "ref",
+              "node": "Comment"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        },
+        {
+          "name": "name",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "wallet",
+          "ty": {
+            "kind": "value",
+            "value": "Money"
+          }
+        }
+      ]
+    }
+  ],
+  "values": [
+    {
+      "name": "Money",
+      "fields": [
+        {
+          "name": "amount",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        },
+        {
+          "name": "currency",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "roots": [
+    {
+      "name": "post",
+      "args": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        }
+      ],
+      "output": "Post",
+      "list": false
+    },
+    {
+      "name": "posts",
+      "args": [],
+      "output": "Post",
+      "list": true
+    }
+  ],
+  "mutations": [
+    {
+      "name": "rename-user",
+      "args": [
+        {
+          "name": "name",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "output": "User"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+[package]
+name = "idyll-data"
+version = "0.1.0"
+edition = "2021"
+description = "Signal-backed normalized data cache for Idyll"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+
+[dependencies]
+idyll = { path = "../idyll" }
+idyll-macros = { path = "../idyll-macros" }
+idyll-schema = { path = "../idyll-schema" }
+derive-where = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+idyll = { path = "../idyll", features = ["testing"] }
+
+[features]
+default = ["registry"]
+# The host-only persisted-query registry (filesystem + git). Off for the wasm guest.
+registry = []

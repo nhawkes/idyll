@@ -1,0 +1,15 @@
+{
+  "mutation": "toggle-todo",
+  "args": [
+    "id"
+  ],
+  "response": {
+    "on": "Todo",
+    "selection": [
+      {
+        "kind": "leaf",
+        "field": "id"
+      }
+    ]
+  }
+}

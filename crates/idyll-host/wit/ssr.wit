@@ -1,0 +1,292 @@
+package idyll:ssr@0.1.0;
+
+/// **The app component is its mount table — ALL the UI code.**
+///
+/// The **page is the root component**: the server executes the `route(request)` root
+/// query natively (pure data — all awaiting happens outside the sandbox), then mounts
+/// the reserved `page` entry (and optional `head`) with the executed seed and folds
+/// the command stream to HTML. Live are the marker-mountable entries nested inside
+/// a page's paint. The same artifact is driven by two runtimes:
+///
+/// - the **server** (wasmtime membrane) calls `mount` per document mount and per
+///   live for its SSR paint, and folds the returned commands into the document.
+/// - the **browser** (jco-transpiled, driven by the hand-written `runtime.js`)
+///   instantiates the component once, claims the page with the same `mount` against
+///   the same seed, re-mounts it per transition, and routes DOM events back through
+///   `dispatch`.
+///
+/// One program, two folds — the two sides cannot diverge because there is nothing
+/// separate to diverge.
+///
+/// **Live identity is two-part.** `name` is the component identity — a declared,
+/// human-meaningful table key, validated against `live()` so a typo'd reference is a
+/// loud boot/render error. `instance` is the mount identity — the per-name occurrence
+/// index in document order, so the same live component can appear more than once on a
+/// page; every fold derives it by walking the same tree in the same order.
+world app {
+    /// The **Template IR** on the wire: a template is a flat, pre-order list of typed
+    /// nodes (the component model has no recursive types; child counts reconstruct the
+    /// tree). Slots are first-class node kinds — no markers exist in any markup, because
+    /// no markup exists: the browser builds/claims DOM directly from this data.
+    record tpl-attr { name: string, value: string }
+    record tpl-element { tag: string, attrs: list<tpl-attr>, slot: option<u32>, children: u32 }
+    /// A live boundary — first-class in the IR (never a marker element or `data-`
+    /// attribute recovered by string comparison). The folds serialize it at their edges;
+    /// whoever splices content containing one owes it a `mount(name, seed)`.
+    record tpl-live { name: string, key: option<string>, fallback: u32 }
+    variant tpl-node {
+        element(tpl-element),
+        text(string),
+        text-slot(u32),
+        anchor-slot(u32),
+        live(tpl-live),
+    }
+    type template = list<tpl-node>;
+
+    /// One style rule a template's elements reference by class. `css` is the rule text
+    /// where values exist — never from the guest: wasm carries style *identity* (class
+    /// names hash the declaration site, not the value), and the server joins names
+    /// against the app's natively-compiled style table.
+    record style-rule { name: string, css: option<string> }
+
+    /// One DOM patch. Mirrors idyll's `DomCommand` (an exhaustive `From` keeps them in
+    /// sync). jco marshals this to a typed JS object, so `runtime.js` switches on the
+    /// case — no JSON, no markup.
+    record slot-node { slot: u32, node: u32 }
+    /// `svg` is the namespace the template's own nodes are created in. It cannot be
+    /// derived downstream: a fragment's IR starts at a `@for` row's tag, and the row is
+    /// built while its anchor is still parked off-tree — positioned only afterwards —
+    /// so the lexical nesting must ride along from the compiler.
+    record template-cmd { template-id: u32, nodes: template, styles: list<style-rule>, svg: bool }
+    record text-cmd { node: u32, text: string }
+    record attr-cmd { node: u32, name: string, value: string }
+    record name-cmd { node: u32, name: string }
+    record bool-attr-cmd { node: u32, name: string, value: bool }
+    record fragment-cmd { anchor: u32, template: u32 }
+    record move-fragment-cmd { anchor: u32, after: u32 }
+    record listener-cmd { node: u32, event-type: string, handler: u32 }
+    /// A layout-measurement subscription: observe `node` with a ResizeObserver and
+    /// deliver its root-relative rect to `handler` on mount and on resize.
+    record measure-cmd { node: u32, handler: u32 }
+    /// One layer of a canvas's picture, as far as this frame changed it: which layer,
+    /// the slots of it that moved, and how many slots it now has — the runtime holds the
+    /// rest and drops any tail beyond `len`.
+    ///
+    /// `changes` is flat because a `list<f32>` lifts into JS as one `Float32Array` copy
+    /// where a `list<record>` lifts as one object per element, and a layer can carry
+    /// thousands. Fifteen floats per changed shape: its slot, then
+    /// `from.x from.y c1.x c1.y c2.x c2.y to.x to.y span.0 span.1 width alpha.0 alpha.1 ink` — a
+    /// cubic in the element's own CSS pixels, the stretch of it to stroke (in the
+    /// curve's parameter), the stroke width, the opacity at each end of that stretch,
+    /// and an index into the command's `inks`.
+    record layer-cmd { layer: u32, changes: list<f32>, len: u32 }
+    /// What a `<canvas>` (a `painting=(…)` binding) has to say this frame.
+    ///
+    /// A picture is layers composited in order, layer 0 underneath, and the guest's
+    /// reactivity is per *shape* — so only the layers whose shapes moved appear in
+    /// `deltas`, and a layer nothing writes never appears at all. The runtime keeps each
+    /// layer's strokes on a bitmap of its own and blits the ones that did not change,
+    /// which is why a card can stand a thousand wires behind its traffic for nothing.
+    ///
+    /// `layers` is how many the picture now has, so the runtime drops any it still
+    /// holds beyond them. The whole frame crosses in this ONE command — the membrane
+    /// charges per crossing, so a surface taking one call per shape (or even one per
+    /// layer) would cost more than the elements it replaces; the colours likewise ride
+    /// once beside the runs rather than a string per shape, which would be a UTF-8
+    /// decode per shape. Each ink is any CSS colour, resolved in the canvas element's
+    /// own cascade — a `var(…)` naming a design token included.
+    record paint-cmd { node: u32, layers: u32, inks: list<string>, deltas: list<layer-cmd> }
+    /// A persisted-mutation request: the operation's 128-bit identity (two words — the
+    /// `OpHash`) plus its serialized variables. The runtime POSTs to
+    /// `/__idyll/m/<hex>`; the server executes only boot-validated artifacts.
+    record server-request-cmd { request: u32, msb: u64, lsb: u64, args: list<u8> }
+    /// A navigation's route re-execution: the route query's identity plus the target
+    /// path. The runtime pushes the history entry where the intent was raised, GETs
+    /// `/__idyll/q/<hex>` for the path, and returns the `Preloaded` payload through
+    /// `deliver` — the response replays into the context store.
+    record navigate-cmd { request: u32, msb: u64, lsb: u64, path: string }
+    /// Why a round-trip failed — the error half of `deliver`. Closed by
+    /// construction: the fetch never produced an HTTP response (`transport`), or
+    /// produced one refusing (`http`). The payloads are the far side's own words.
+    record http-refusal { status: u16, body: string }
+    variant request-error {
+        transport(string),
+        http(http-refusal),
+    }
+    /// Start delivering ticks to a handler — the wire half of the Elm-style
+    /// signal-gated time subscription (`ctx.every` / `ctx.frames`). `interval-ms`
+    /// absent means animation frames (rAF); present, a fixed interval. Each tick is an
+    /// ordinary `dispatch` whose event carries `timestamp` = delta since the previous
+    /// tick — ticks are messages, so simulations replay from the message log.
+    record start-ticks-cmd { handler: u32, interval-ms: option<f64> }
+
+    variant command {
+        replace-template(template-cmd),
+        set-text(text-cmd),
+        set-attr(attr-cmd),
+        /// One CSS declaration on the element's inline style (`style.setProperty`;
+        /// empty value clears it) — no whole-attribute reparse for moving parts.
+        set-style-prop(attr-cmd),
+        remove-attr(name-cmd),
+        set-bool-attr(bool-attr-cmd),
+        mount-fragment(fragment-cmd),
+        replace-fragment(fragment-cmd),
+        remove-fragment(u32),
+        detach-fragment(u32),
+        attach-fragment(u32),
+        move-fragment(move-fragment-cmd),
+        add-event-listener(listener-cmd),
+        remove-event-listener(listener-cmd),
+        watch-measure(measure-cmd),
+        unwatch-measure(measure-cmd),
+        /// Show what changed of a canvas's picture — the runtime owns the element, its
+        /// device-pixel scaling, the per-layer bitmaps, the clear and the strokes. A
+        /// client concern: the server fold discards it, and the client mount's own first
+        /// paint fills the blank served `<canvas>`.
+        paint(paint-cmd),
+        bind-slot(slot-node),
+        /// A typed server-mutation request the loop fired (commands out, messages in):
+        /// the browser runtime POSTs `args` to `/__idyll/m/<name>` and returns the
+        /// response through `deliver`. The server fold discards it (a client effect).
+        server-request(server-request-cmd),
+        /// A navigation's route re-execution (a client effect; server folds
+        /// discard it).
+        navigate(navigate-cmd),
+        /// Subscribe a handler to navigation intents — same-origin link clicks and
+        /// popstate, each dispatched as an event whose value is the path.
+        watch-navigation(u32),
+        /// Observe the mount root's width, dispatched to the handler as an event whose
+        /// value is the number of CSS pixels — once on observe, then on every change.
+        watch-size(u32),
+        /// Tick-subscription control (client concerns; server folds discard them).
+        start-ticks(start-ticks-cmd),
+        stop-ticks(u32),
+        /// Release the browser fold's entries for these guest-minted node ids —
+        /// emitted when a mounted view instance is torn down.
+        free-nodes(list<u32>),
+        /// The stream's **root announcement**: build/claim the named template as
+        /// this mount's document. Explicit, never inferred — templates are
+        /// content-addressed (a remount's root is already registered and re-emits
+        /// nothing) and template ids are global in the shared runtime.
+        mount-root(u32),
+    }
+
+    /// A laid-out element's rectangle, root-relative, in CSS pixels — set on `measure`
+    /// events (a `measure=>` binding, observed by a `ResizeObserver`).
+    record measure-rect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    }
+
+    /// A normalized DOM event `runtime.js` passes to `dispatch`. `timestamp` is set on
+    /// tick events: the delta since the previous tick, in milliseconds; `rect` on `measure`
+    /// events.
+    record dom-event {
+        target-value: option<string>,
+        key: option<string>,
+        timestamp: option<f64>,
+        rect: option<measure-rect>,
+    }
+
+    /// Scheduling priority of pending reactive work — mirrors idyll's `Lane`. The
+    /// browser scheduler drains `input` before `idle`, delivering queued events
+    /// between slices so urgent updates never wait behind deferred work.
+    enum lane {
+        input,
+        idle,
+    }
+
+    /// One interruptible **slice** of a flush: the commands produced so far, whether
+    /// the reactive graph has fully settled (`done`), and — if not — the highest
+    /// priority lane still holding work. Every entry point (`mount`/`dispatch`/
+    /// `deliver`/`unmount`) enqueues its work and returns the first slice; the caller
+    /// then loops `flush(budget)` until `done`. A synchronous host (SSR) drains to
+    /// completion in one call chain; an interruptible host (the browser) yields to the
+    /// event loop between slices, delivering queued events input-lane-first.
+    record flush-result {
+        commands: list<command>,
+        done: bool,
+        pending-lane: option<lane>,
+    }
+
+    /// A mount's first slice plus whether the island is a **static paint**: it wired no
+    /// client work (listener, effect, tick/nav/size subscription, `on_unmount`), declared
+    /// no nested live, and read no context its isolated frame could not satisfy. When
+    /// `static-paint` is set, the island's SSR paint is the whole story — the browser
+    /// adopts the served DOM as-is and never re-runs the component (framework_limitations
+    /// #3). Only `mount` reports it; every other entry point returns a bare `flush-result`.
+    record mount-result {
+        flush: flush-result,
+        static-paint: bool,
+    }
+
+    /// One mounted live: its table name plus its per-name occurrence index in
+    /// document order (the mount identity — see the world docs).
+    record live-ref {
+        name: string,
+        instance: u32,
+        /// The row identity for repeated live (a record's canonical wire id,
+        /// minted at the marker). Mount identity is `(name, key)` when present,
+        /// `(name, instance)` when not.
+        key: option<string>,
+    }
+
+    /// The app's **mount table, as data**: every name `mount` accepts. `page` (and
+    /// `head`, when declared) are the reserved document mounts — required/validated
+    /// at engine build, never referenced by markers. The server validates rendered
+    /// live references against the rest — an unknown name is a loud error, never a
+    /// silently dead wrapper.
+    export live: func() -> list<string>;
+    /// Mount/hydrate **one live**. In the browser every live mounts into the ONE
+    /// guest runtime — one node-id space, shared signals — so live sharing state
+    /// (through context, below) is ordinary same-thread reactivity, and a command
+    /// stream returned by any export may touch any live's nodes. On the server each
+    /// mount runs in a fresh isolated store (the deliberate SSR asymmetry: same first
+    /// frame, not same store topology). The seed is the executed route query; the
+    /// app's table builds the live's args from it. The stream is **self-contained**
+    /// — templates arrive in-band as `replace-template` commands — so the server
+    /// folds it into the wrapper and the browser claims with the identical call.
+    ///
+    /// `parent` is the live whose DOM region encloses this mount (the browser
+    /// derives it from wrapper nesting; document order guarantees it mounted first).
+    /// The guest parents this mount's context scope to it, so a store-root live's
+    /// provides reach the live inside it. Absent for top-level mounts — and always
+    /// absent on the server, where mounts are isolated.
+    ///
+    /// Mounting an identity that is already live unmounts the old root first (its
+    /// `free-nodes` ride this same stream).
+    ///
+    /// App-level failure is the `err` arm — an unknown live name, a seed that does
+    /// not decode, missing args. A typed error leaves the instance healthy (its
+    /// neighbours keep working); a trap still means the instance is unreliable.
+    ///
+    /// Returns the **first slice**: the guest mounts and runs one bounded flush, so
+    /// the initial paint can begin streaming before a big subtree finishes. Loop
+    /// `flush` until `done`.
+    /// `client` is the mount's environment, stated by the caller — the one fact the
+    /// guest cannot sense: a browser mount runs client effects after the DOM lands;
+    /// a server paint must not (the same code re-runs client-side, and an effect
+    /// fired twice is exactly the hydration desync the capability model forbids).
+    export mount: func(live: live-ref, parent: option<live-ref>, seed: list<u8>, client: bool) -> result<mount-result, string>;
+    /// Unmount one live instance: cancel its tasks and listeners, dispose its
+    /// cells, and return the resulting slice (its `free-nodes`, plus any updates
+    /// live sharing its store emit in the same turn). Whoever removes a live's
+    /// DOM (a transition swapping the body) owes it this call; unknown identities are
+    /// a no-op. Server folds never call it — a server mount's store is dropped whole.
+    export unmount: func(live: live-ref) -> flush-result;
+    /// Deliver a DOM event to a handler of one live → the resulting first slice.
+    export dispatch: func(live: live-ref, handler: u32, event: dom-event) -> flush-result;
+    /// Deliver a server-mutation response to the live that requested it (`request` is
+    /// the id from its `server-request` command) → the resulting first slice. The
+    /// response resolves to a **message** in the requesting component's inbox; an
+    /// unknown id (live unmounted mid-flight) is a no-op.
+    export deliver: func(live: live-ref, request: u32, response: result<list<u8>, request-error>) -> flush-result;
+    /// Drive more pending reactive work: run up to `budget` effect-step units, highest
+    /// priority lane first, and return the resulting slice. The caller loops this
+    /// until `flush-result.done`; between calls an interruptible host delivers queued
+    /// events (which enqueue more work through `dispatch`/`deliver`). `budget` bounds a
+    /// single slice so a large `@for` splice cannot monopolize the frame.
+    export flush: func(budget: u32) -> flush-result;
+}

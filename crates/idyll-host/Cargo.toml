@@ -1,0 +1,17 @@
+[package]
+name = "idyll-host"
+version = "0.1.0"
+edition = "2021"
+description = "Server-side SSR render harness: seals the !Send idyll reactive core inside a per-render wasm instance"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+
+[dependencies]
+wasmtime = { version = "46", features = ["component-model", "runtime", "cranelift"] }
+wasmtime-wasi = "46"
+anyhow = { workspace = true }
+thiserror = "2"
+# The membrane speaks idyll's own command vocabulary at its edge: `mount` streams
+# convert to `DomCommand` for the host's HTML fold.
+idyll = { path = "../idyll" }
+

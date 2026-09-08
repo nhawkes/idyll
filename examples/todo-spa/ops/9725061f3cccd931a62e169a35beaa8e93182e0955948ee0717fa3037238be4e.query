@@ -1,0 +1,62 @@
+{
+  "on": "Query",
+  "selection": [
+    {
+      "kind": "root",
+      "field": "route",
+      "args": [
+        "request"
+      ],
+      "list": false,
+      "frag": {
+        "on": "Page",
+        "selection": [
+          {
+            "kind": "leaf",
+            "field": "id"
+          },
+          {
+            "kind": "enum",
+            "field": "route",
+            "variants": [
+              {
+                "variant": "About",
+                "selection": []
+              },
+              {
+                "variant": "Todos",
+                "selection": [
+                  {
+                    "kind": "list",
+                    "edge": "todos",
+                    "frag": {
+                      "on": "Todo",
+                      "selection": [
+                        {
+                          "kind": "leaf",
+                          "field": "done"
+                        },
+                        {
+                          "kind": "leaf",
+                          "field": "id"
+                        },
+                        {
+                          "kind": "leaf",
+                          "field": "text"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "kind": "leaf",
+            "field": "title"
+          }
+        ]
+      }
+    }
+  ]
+}

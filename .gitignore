@@ -1,0 +1,6 @@
+target/
+node_modules/
+.history/
+*.bak
+CLAUDE.md
+.claude/

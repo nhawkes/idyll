@@ -1,0 +1,20 @@
+[package]
+name = "idyll-macros"
+version = "0.1.0"
+edition = "2021"
+description = "Procedural macros for the Idyll UI framework (view! and component!)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits", "visit"] }
+# The client macros read the published schema.json at expansion time (fragment!/query!/
+# mutation! validate selections and generate projections from it).
+idyll-schema = { path = "../idyll-schema" }
+idyll-styles-parse = { path = "../idyll-styles-parse" }
+serde_json = { workspace = true }

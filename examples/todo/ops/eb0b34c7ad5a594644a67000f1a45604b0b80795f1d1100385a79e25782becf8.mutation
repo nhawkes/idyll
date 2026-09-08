@@ -1,0 +1,23 @@
+{
+  "mutation": "add-todo",
+  "args": [
+    "text"
+  ],
+  "response": {
+    "on": "Todo",
+    "selection": [
+      {
+        "kind": "leaf",
+        "field": "done"
+      },
+      {
+        "kind": "leaf",
+        "field": "id"
+      },
+      {
+        "kind": "leaf",
+        "field": "text"
+      }
+    ]
+  }
+}

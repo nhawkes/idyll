@@ -1,0 +1,29 @@
+[package]
+name = "todo-app"
+version = "0.1.0"
+edition = "2021"
+description = "The todo app's island table — islands, their fragments, and the route query they compose into. The server builds this crate to wasm on demand; the same artifact is mounted by the membrane (SSR paint) and the browser (claim)."
+
+[lib]
+# rlib: the native server links it (the route query artifact) and the tests drive it.
+# cdylib: one `wasm32-wasip2` component (the `idyll:ssr` `app` world: islands + mount +
+# dispatch + deliver) — mounted by the server membrane AND jco-transpiled for the browser.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+idyll = { path = "../../../crates/idyll" }
+idyll-data = { path = "../../../crates/idyll-data", default-features = false }
+idyll-styles = { path = "../../../crates/idyll-styles" }
+serde = { workspace = true }
+
+# The wasm build uses only `wit-bindgen` — the app exposes a WIT interface and imports
+# WASI, nothing else. No wasm-bindgen / web-sys / JS bindings: the browser runs the same
+# component through a hand-written `runtime.js` (jco-transpiled, WASI mapped to a tiny
+# hand-written shim), not generated JS glue.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = "0.51"
+
+[dev-dependencies]
+serde_json = { workspace = true }
+# The contract test drives a component directly, which needs the root-context mint.
+idyll = { path = "../../../crates/idyll", features = ["testing"] }

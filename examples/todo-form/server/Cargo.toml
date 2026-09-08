@@ -1,0 +1,17 @@
+[package]
+name = "todo-form-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "todo-form-server"
+path = "src/main.rs"
+
+[dependencies]
+idyll = { path = "../../../crates/idyll" }
+todo-form-app = { path = "../app" }
+idyll-serve = { path = "../../../crates/idyll-serve" }
+idyll-data = { path = "../../../crates/idyll-data", default-features = false }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }

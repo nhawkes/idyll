@@ -1,0 +1,126 @@
+{
+  "nodes": [
+    {
+      "name": "Page",
+      "fields": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "title",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "route",
+          "ty": {
+            "kind": "value",
+            "value": "Route"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Todo",
+      "fields": [
+        {
+          "name": "id",
+          "ty": {
+            "kind": "scalar",
+            "name": "u64"
+          }
+        },
+        {
+          "name": "text",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "done",
+          "ty": {
+            "kind": "scalar",
+            "name": "bool"
+          }
+        }
+      ]
+    }
+  ],
+  "values": [
+    {
+      "name": "Request",
+      "fields": [
+        {
+          "name": "path",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "enums": [
+    {
+      "name": "Route",
+      "variants": [
+        {
+          "name": "Todos",
+          "fields": [
+            {
+              "name": "todos",
+              "ty": {
+                "kind": "list",
+                "of": {
+                  "kind": "ref",
+                  "node": "Todo"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Prose"
+        }
+      ]
+    }
+  ],
+  "roots": [
+    {
+      "name": "route",
+      "args": [
+        {
+          "name": "request",
+          "ty": {
+            "kind": "value",
+            "value": "Request"
+          }
+        }
+      ],
+      "output": "Page",
+      "list": false
+    }
+  ],
+  "mutations": [
+    {
+      "name": "add-todo",
+      "args": [
+        {
+          "name": "text",
+          "ty": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "output": "Todo"
+    }
+  ]
+}

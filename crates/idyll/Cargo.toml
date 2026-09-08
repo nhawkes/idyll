@@ -1,0 +1,42 @@
+[package]
+name = "idyll"
+version = "0.1.0"
+edition = "2021"
+description = "A render-once, futures-first UI framework for Rust and WebAssembly"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+keywords = ["wasm", "ui", "framework", "reactive", "webassembly"]
+categories = ["wasm", "gui", "web-programming"]
+
+# No JS bindings anywhere: the browser runs the app as a wasm component through the
+# hand-written `runtime.js` (idyll-serve), so idyll itself has no wasm-bindgen/web-sys
+# surface and no `web` feature.
+[features]
+# Exposes `Turn::for_test`. Test-only: a turn is a capability, so anything that can
+# mint one outside a reducer must be unreachable from an app.
+testing = []
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+smallvec = "1"
+idyll-macros = { path = "../idyll-macros" }
+slotmap = "1"
+indexmap = "2"
+pin-project-lite = "0.2"
+serde = { workspace = true }
+idyll-schema = { path = "../idyll-schema" }
+serde_json = { workspace = true, features = ["raw_value"] }
+type-map = "0.5.1"
+
+
+
+
+# Spec entity encoding/decoding (full table), replacing ad-hoc string replaces.
+html-escape = "0.2"
+
+[dev-dependencies]
+# The integration tests are separate crates, so `cfg(test)` does not reach the lib;
+# they enable the feature the same way any downstream test harness would.
+idyll = { path = ".", features = ["testing"] }

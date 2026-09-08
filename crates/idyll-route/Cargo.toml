@@ -1,0 +1,9 @@
+[package]
+name = "idyll-route"
+version = "0.1.0"
+edition = "2021"
+description = "Typed routes: a URL is a projection of a typed route value, and one #[derive(Route)] spec emits both directions (parse and url) so they cannot drift."
+
+[dependencies]
+idyll-macros = { path = "../idyll-macros" }
+percent-encoding = "2"

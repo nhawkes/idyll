@@ -1,0 +1,43 @@
+[package]
+name = "idyll-serve"
+version = "0.1.0"
+edition = "2021"
+description = "The idyll dev server: a typed (bon) builder that builds the app crate to wasm on demand, renders SSR through the membrane, and hot-reloads."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+
+[dependencies]
+brotli = "6"
+wasmparser = "0.244"
+wasm-encoder = { version = "0.244", features = ["wasmparser"] }
+clap = { version = "4", features = ["derive"] }
+idyll = { path = "../idyll" }
+idyll-host = { path = "../idyll-host" }
+idyll-schema = { path = "../idyll-schema" }
+idyll-styles = { path = "../idyll-styles" }
+idyll-data = { path = "../idyll-data", default-features = false }
+idyll-route = { path = "../idyll-route" }
+base64 = "0.22"
+axum = { workspace = true }
+html-escape = "0.2"
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tower-http = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bon = { workspace = true }
+notify = { workspace = true }
+wasm-opt = "0.116"
+js-component-bindgen = "2"
+oxc_allocator = "0.144.0"
+oxc_parser = "0.144.0"
+oxc_ast = "0.144.0"
+oxc_span = "0.144.0"
+oxc_codegen = "0.144.0"
+oxc_minifier = "0.144.0"
+oxc_ast_visit = "0.144.0"
+
+[dev-dependencies]
+wat = "1"
+todo-app = { path = "../../examples/todo/app" }

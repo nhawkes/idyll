@@ -1,0 +1,16 @@
+[package]
+name = "membrane-fixture-guest"
+version = "0.1.0"
+edition = "2021"
+description = "Source of ../guest.wasm — the tiny world-`app` component the membrane tests drive. Not a workspace member; built standalone (see ../README.md)."
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.51"
+
+[profile.release]
+opt-level = "s"

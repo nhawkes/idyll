@@ -1,0 +1,24 @@
+[package]
+name = "idyll-styles"
+version = "0.1.0"
+edition = "2021"
+description = "Typed, compile-checked CSS for idyll — StyleX's model with declaration-site class identity"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nhawkes/idyll"
+
+[dependencies]
+idyll = { path = "../idyll" }
+idyll-macros = { path = "../idyll-macros" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# The source extractor — native-only, like the style values themselves.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+idyll-styles-parse = { path = "../idyll-styles-parse" }
+syn = { version = "2", features = ["full"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+# The css! tests drive a component directly, which needs the root-context mint.
+idyll = { path = "../idyll", features = ["testing"] }
