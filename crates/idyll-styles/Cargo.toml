@@ -3,7 +3,7 @@ name = "idyll-styles"
 version = "0.1.0"
 edition = "2021"
 description = "Typed, compile-checked CSS for idyll — StyleX's model with declaration-site class identity"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]

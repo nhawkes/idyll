@@ -3,7 +3,7 @@ name = "idyll-serve"
 version = "0.1.0"
 edition = "2021"
 description = "The idyll dev server: a typed (bon) builder that builds the app crate to wasm on demand, renders SSR through the membrane, and hot-reloads."
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]

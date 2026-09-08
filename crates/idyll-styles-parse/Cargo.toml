@@ -3,7 +3,7 @@ name = "idyll-styles-parse"
 version = "0.1.0"
 edition = "2021"
 description = "The ONE parser for idyll-styles: the `#[styles]` module grammar, class naming, and rule rendering — shared by the attribute macro (expansion) and the source extractor (the style table)."
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]

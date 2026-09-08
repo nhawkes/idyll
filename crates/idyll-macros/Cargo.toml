@@ -3,7 +3,7 @@ name = "idyll-macros"
 version = "0.1.0"
 edition = "2021"
 description = "Procedural macros for the Idyll UI framework (view! and component!)"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [lib]

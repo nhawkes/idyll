@@ -2,6 +2,7 @@
 name = "idyll-route"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 description = "Typed routes: a URL is a projection of a typed route value, and one #[derive(Route)] spec emits both directions (parse and url) so they cannot drift."
 
 [dependencies]

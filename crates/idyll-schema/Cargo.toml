@@ -3,7 +3,7 @@ name = "idyll-schema"
 version = "0.1.0"
 edition = "2021"
 description = "The published idyll schema artifact: types + deterministic serialization, shared by the data layer and the client macros."
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]

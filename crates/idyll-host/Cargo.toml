@@ -3,7 +3,7 @@ name = "idyll-host"
 version = "0.1.0"
 edition = "2021"
 description = "Server-side SSR render harness: seals the !Send idyll reactive core inside a per-render wasm instance"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]

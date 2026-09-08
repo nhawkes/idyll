@@ -3,7 +3,7 @@ name = "idyll-data"
 version = "0.1.0"
 edition = "2021"
 description = "Signal-backed normalized data cache for Idyll"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
