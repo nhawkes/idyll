@@ -182,6 +182,12 @@ pub struct Server<Src: Clone + Send + Sync + 'static> {
     /// sits beside it. Defaults to the parent of `manifest_dir`.
     #[builder(into)]
     schema_path: Option<PathBuf>,
+    /// The route whose page stands in for absence: when the route query resolves to
+    /// nothing, the server renders this route's page under a 404 status, and
+    /// [`prerender`](Self::prerender) writes it to `404.html`. Without it, absence is a
+    /// bare-text 404. The route itself is an ordinary page at its own URL.
+    #[builder(with = |route: impl idyll_route::Route| route.url().into_string())]
+    not_found: Option<String>,
 }
 
 /// The app's engine: the membrane plus what its mount table declares. Rebuilt (and
@@ -232,6 +238,8 @@ struct AppState<Src: Clone + Send + Sync + 'static> {
     styles: Arc<RwLock<Styles>>,
     /// Dev mode: the rendered page gets the live-reload client injected.
     dev: bool,
+    /// The URL of the page that stands in for absence, if the app names one.
+    not_found: Option<String>,
 }
 
 /// The interpreter's state: schema + resolvers + the boot-validated persisted-operation
@@ -567,6 +575,7 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             reload: reload_tx,
             styles,
             dev,
+            not_found: self.not_found,
         });
         Ok(Some(Prepared { state, client_dir, assets: self.assets, dev, port: self.port }))
     }
@@ -705,6 +714,23 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
                 std::fs::write(dest.with_extension("html.br"), build::brotli_bytes(html.as_bytes()))?;
             }
             pages.push((url.into_string(), file.to_string_lossy().into_owned()));
+        }
+
+        // `404.html` is what static hosts (Cloudflare Pages, Netlify, GitHub Pages) serve
+        // for a path they have no file for; the page is not a route of the site, so it
+        // stays out of the manifest.
+        if let Some(url) = &state.not_found {
+            let body = render_not_found(&state).await.map_err(|why| anyhow::anyhow!("prerender {url}: {why}"))?;
+            let bytes = axum::body::to_bytes(body, usize::MAX).await.with_context(|| format!("collecting {url}"))?;
+            let mut html = String::from_utf8(bytes.to_vec()).with_context(|| format!("{url} is not UTF-8"))?;
+            anyhow::ensure!(html.ends_with("</body></html>"), "prerender {url}: incomplete document");
+            if let Some(embed) = &embed {
+                html = embed.inline(html);
+            }
+            std::fs::write(out.join("404.html"), html.as_bytes())?;
+            if !standalone {
+                std::fs::write(out.join("404.html.br"), build::brotli_bytes(html.as_bytes()))?;
+            }
         }
 
         let manifest = pages
@@ -1448,17 +1474,40 @@ fn chunks_script(chunks: &chunks::ChunkManifest, assets_route: &str) -> String {
     serde_json::json!({ "live": live }).to_string()
 }
 
+/// The document for absence: the app's `not_found` page, rendered like any other. The
+/// route resolver must answer for its own not-found URL — if it does not, that is the
+/// app's contract broken, not another absence.
+async fn render_not_found<Src: Clone + Send + Sync + 'static>(
+    state: &AppState<Src>,
+) -> Result<axum::body::Body, String> {
+    let url = state.not_found.as_deref().ok_or_else(|| "no not-found page".to_string())?;
+    match render_path(state, url, None).await {
+        Ok(body) => Ok(body),
+        Err(RenderError::NoRoute) => Err(format!("the route query resolves nothing for the not-found page {url}")),
+        Err(RenderError::Fault(message)) => Err(message),
+    }
+}
+
 /// Serve any path: execute the route query, stream the document. Absence is an
-/// honest 404 (the stream only starts after the route resolves).
+/// honest 404 (the stream only starts after the route resolves), carrying the app's
+/// not-found page when it names one.
 async fn page_endpoint<Src: Clone + Send + Sync + 'static>(
     uri: axum::http::Uri,
     State(state): State<Arc<AppState<Src>>>,
 ) -> Response {
-    match render_path(&state, uri.path(), None).await {
-        Ok(body) => Response::builder()
+    let document = |status: StatusCode, body: axum::body::Body| {
+        Response::builder()
+            .status(status)
             .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .body(body)
-            .expect("static response parts are valid"),
+            .expect("static response parts are valid")
+    };
+    match render_path(&state, uri.path(), None).await {
+        Ok(body) => document(StatusCode::OK, body),
+        Err(RenderError::NoRoute) if state.not_found.is_some() => match render_not_found(&state).await {
+            Ok(body) => document(StatusCode::NOT_FOUND, body),
+            Err(message) => fault("render", message, state.dev),
+        },
         Err(RenderError::NoRoute) => (StatusCode::NOT_FOUND, "no such page").into_response(),
         Err(RenderError::Fault(message)) => fault("render", message, state.dev),
     }
