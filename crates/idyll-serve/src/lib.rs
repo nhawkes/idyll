@@ -1685,6 +1685,11 @@ fn report_optimized_sizes(
         let path = client_dir.join(file);
         let optimized = std::env::temp_dir().join(file);
         wasm_opt::OptimizationOptions::new_optimize_for_size()
+            // Binaryen validates against its own baseline, which is older than the
+            // toolchain that produced these bytes — `wasm32-wasip2` emits `memory.fill`
+            // and friends, so an MVP baseline rejects the module we just built. The
+            // optimized copy is measured and dropped, so read everything.
+            .all_features()
             .run(&path, &optimized)
             .with_context(|| format!("wasm-opt on {file}"))?;
         let before = std::fs::metadata(&path)?.len();
