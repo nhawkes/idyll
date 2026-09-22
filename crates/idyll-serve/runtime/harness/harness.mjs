@@ -21,7 +21,8 @@ for (const key of ['window', 'document', 'Node', 'sessionStorage', 'location', '
 }
 globalThis.addEventListener = dom.window.addEventListener.bind(dom.window);
 
-const { Live, newFold, planRegions, RULES, injectStyles } = await import('../runtime.js');
+const { Live, newFold, planRegions, RULES, injectStyles, islandsByRoot, unmountedWrappers } =
+  await import('../runtime.js');
 
 /** A comparable clone: anchor comments are claim-time bookkeeping, not content. */
 function withoutComments(node) {
@@ -165,6 +166,46 @@ function checkStyles(name, commands) {
   }
 }
 
+/** A wrapper's life through the fold: built into a fragment it is owed a mount; parked
+ * with a detached branch it keeps its island; attached it is owed a mount again only if
+ * it never had one; dropped with its fragment its island is disposed. */
+function checkWrapperLifecycle() {
+  const name = 'wrapper-lifecycle';
+  const wrapper = document.createElement('div');
+  document.body.append(wrapper);
+  const live = new Live(name, 0, wrapper, newFold());
+  live.applyAll([
+    { tag: 'replace-template', val: { templateId: 0, nodes: [{ tag: 'anchor-slot', val: 0 }], styles: [] } },
+    { tag: 'mount-root', val: 0 },
+    { tag: 'bind-slot', val: { slot: 0, node: 1 } },
+    {
+      tag: 'replace-template',
+      val: { templateId: 1, nodes: [{ tag: 'live', val: { name: 'inner', key: null, fallback: 0 } }], styles: [] },
+    },
+    { tag: 'mount-fragment', val: { anchor: 1, template: 1 } },
+  ]);
+  const built = wrapper.querySelector('idyll-live');
+  if (!unmountedWrappers.has(built)) return fail(name, 'a built wrapper is not owed a mount', wrapper.innerHTML);
+
+  let disposed = 0;
+  islandsByRoot.set(built, { dispose: () => disposed++ });
+  unmountedWrappers.delete(built);
+  live.applyAll([{ tag: 'detach-fragment', val: 1 }]);
+  if (disposed !== 0 || !islandsByRoot.has(built)) {
+    return fail(name, 'detaching a branch disposed the island inside it', `disposed ${disposed}`);
+  }
+  live.applyAll([{ tag: 'attach-fragment', val: 1 }]);
+  if (!built.isConnected || unmountedWrappers.has(built)) {
+    return fail(name, 'attaching lost the wrapper or owed a second mount', wrapper.innerHTML);
+  }
+  live.applyAll([{ tag: 'remove-fragment', val: 1 }]);
+  if (disposed !== 1 || islandsByRoot.has(built)) {
+    return fail(name, 'removing a branch did not dispose the island inside it', `disposed ${disposed}`);
+  }
+  wrapper.remove();
+  console.log(`ok [${name}] built, parked, attached, dropped`);
+}
+
 const dir = process.argv[2];
 if (!dir) {
   console.error('usage: node harness.mjs <fixtures-dir>');
@@ -182,4 +223,6 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
   checkStyles(name, commands);
   if (!failed) console.log(`ok [${name}] ${buildOnly ? 'build converges' : 'build+claim converge'} (${commands.length} commands)`);
 }
+failed = false;
+checkWrapperLifecycle();
 process.exit(process.exitCode ?? 0);

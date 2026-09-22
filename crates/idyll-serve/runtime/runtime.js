@@ -602,9 +602,8 @@ function newFold() {
 
 /** A static-paint island the server rendered once and serialized (`data-static`): the
  * client adopts its SSR DOM untouched and never mounts it in the guest, so it holds no
- * guest state. It occupies a slot in `liveIslands` only so instance counting and the
- * disconnection sweep still see it — disposal is a no-op, and it is never a parent (a
- * static island declares no nested live). */
+ * guest state. It is registered like a mounted live only so removal finds it — disposal
+ * is a no-op, and it is never a parent (a static island declares no nested live). */
 class StaticIsland {
   constructor(root) {
     this.name = root.getAttribute('data-i');
@@ -837,7 +836,7 @@ class Live {
       return;
     }
     // Mount returns a mount-result: the first flush slice plus a static-paint verdict the
-    // server already acted on (a static island never reaches here — see `mountIslands`).
+    // server already acted on (a static island never reaches here — see `hydrateIslands`).
     // The claim planner needs the whole self-contained stream to align regions to the SSR
     // DOM, so drain the flush before applying.
     const commands = drainFully(this, result.flush);
@@ -851,14 +850,14 @@ class Live {
   }
 
   applyAll(commands) {
-    let wrappers = false;
+    let placed = false;
     let moved = false;
     for (const c of commands) {
       this.apply(c);
-      wrappers ||= c.tag === 'mount-fragment' || c.tag === 'replace-fragment';
+      placed ||= PLACES_WRAPPERS.has(c.tag);
       moved ||= MOVES_LAYOUT.has(c.tag);
     }
-    if (wrappers) scheduleIslandReconcile();
+    if (placed && unmountedWrappers.size > 0) scheduleIslandReconcile();
     if (moved) scheduleRemeasure();
   }
 
@@ -1228,8 +1227,15 @@ class Live {
   dropFragment(anchorId) {
     const f = this.fold.fragments.get(anchorId);
     if (!f) return;
-    if (f.parked === null && f.nodes.length > 0) {
-      for (const n of siblingsThrough(f.nodes[0], this.ownEnd(anchorId))) n.remove();
+    const dropped =
+      f.parked !== null
+        ? [...f.parked.childNodes]
+        : f.nodes.length > 0
+          ? siblingsThrough(f.nodes[0], this.ownEnd(anchorId))
+          : [];
+    for (const n of dropped) {
+      n.remove();
+      retireIslandsIn(n);
     }
     f.parked = null;
     f.nodes = [];
@@ -1374,10 +1380,11 @@ class Live {
         return el;
       }
       case 'live': {
-        // The live boundary's DOM edge format (identity lives in the IR). The
-        // `data-i` attribute is what live discovery scans for.
+        // The live boundary's DOM edge format (identity lives in the IR). A wrapper
+        // built here is one this runtime owes a mount, so it is recorded as it is made.
         const v = node.val;
         const el = document.createElement('idyll-live');
+        unmountedWrappers.add(el);
         el.setAttribute('data-i', v.name);
         if (v.key != null) el.setAttribute('data-k', v.key);
         el.setAttribute('style', 'display:contents');
@@ -1734,9 +1741,18 @@ function planRegions(commands, fold) {
  * mount. */
 let currentSeed = null;
 
-/** The current page's live live — disposed (timers stopped) when a splice
- * removes their wrapper. */
-let liveIslands = [];
+/** Every mounted island, by its `<idyll-live>` wrapper — disposed when the fold drops a
+ * range containing that wrapper, and never before: a detached (parked) wrapper keeps its
+ * island. */
+const islandsByRoot = new Map();
+
+/** Wrappers the fold has built and no island owns yet. One inside parked content waits
+ * here until that content is attached. */
+const unmountedWrappers = new Set();
+
+/** Per live name, the next instance a mount after hydration takes. Instances are never
+ * reused, so a new mount can never unseat a mounted one in the guest's identity map. */
+const nextInstance = new Map();
 
 /** Every active `measure=>` re-measure callback, across all live. A `ResizeObserver`
  * catches an element's *size* changes; this catches the *position* shifts it cannot see —
@@ -1754,9 +1770,8 @@ const measures = new Set();
  * and remeasuring the document on each of those would cost a layout per frame to learn nothing.
  * A fragment is the unit that occupies space, so a fragment is what can displace a neighbour.
  *
- * Distinct from the reconcile question, which only `mount-fragment` and `replace-fragment`
- * answer, because only those can bring a new live wrapper into the tree. Removing the last
- * nine hundred rows of a list introduces no wrapper and reflows everything after it. */
+ * Distinct from [PLACES_WRAPPERS]: removing the last nine hundred rows of a list places no
+ * wrapper and reflows everything after it. */
 const MOVES_LAYOUT = new Set([
   'mount-fragment',
   'replace-fragment',
@@ -1765,6 +1780,10 @@ const MOVES_LAYOUT = new Set([
   'attach-fragment',
   'move-fragment',
 ]);
+
+/** The commands that can put an unmounted wrapper into the document: building one, or
+ * attaching parked content that holds one. */
+const PLACES_WRAPPERS = new Set(['mount-root', 'mount-fragment', 'replace-fragment', 'attach-fragment']);
 
 let remeasureQueued = false;
 function scheduleRemeasure() {
@@ -1778,93 +1797,104 @@ function scheduleRemeasure() {
   else queueMicrotask(run);
 }
 
-/** Mount every live wrapper under `scope` by its (name, document-order instance)
- * identity — the same counting every fold derives by walking the same tree. Nested
- * wrappers mount after their enclosing live (document order) and pass it as their
- * mount's parent, so its context reaches them.
- *
- * Discovery is a worklist, not one scan: a spliced body carries only its OUTERMOST
- * markers — an enclosing live's wrappers appear when its mount builds its view
- * (SSR paint carries them all up front, but claim and build must converge). A mount
- * inserts wrappers only inside its own wrapper — after itself in document order —
- * so mounting the first unmounted wrapper and rescanning assigns each live the
- * same instance index the fully-expanded tree walk would. */
-async function mountIslands(scope, seed, claim) {
-  // Live whose wrapper a splice removed are dead: dispose them (guest unmount,
-  // timers) before counting, so their identities free up for the new content.
-  for (let i = liveIslands.length - 1; i >= 0; i--) {
-    if (!liveIslands[i].root.isConnected) {
-      liveIslands[i].dispose();
-      liveIslands.splice(i, 1);
-    }
-  }
-  for (const el of scope.querySelectorAll('idyll-live[data-i]')) {
+/** Mount every island the server painted, in document order. The paint carries every
+ * wrapper up front (nested ones inside their enclosing live's paint), so one scan finds
+ * them all, and each takes its per-name document-order instance: the count every fold
+ * derives by walking the same tree. An enclosing live precedes the lives inside it, so it
+ * is mounted first and is their parent. */
+async function hydrateIslands(seed) {
+  const wrappers = [...document.querySelectorAll('idyll-live[data-i]')];
+  for (const el of wrappers) {
     const name = el.getAttribute('data-i');
-    if (linkedIslands.has(name)) continue;
-    if (el.hasAttribute('data-static') && !el.querySelector('idyll-live[data-i]')) continue;
+    if (linkedIslands.has(name) || isStaticPaint(el)) continue;
     for (const url of CHUNKS?.live[name] ?? []) fetchChunk(url).catch(() => {});
   }
+  const counts = new Map();
   let deadline = performance.now() + FRAME_BUDGET_MS;
-  for (;;) {
-    const counts = new Map();
-    let next = null;
-    let instance = 0;
-    for (const el of scope.querySelectorAll('idyll-live[data-i]')) {
-      const name = el.getAttribute('data-i');
-      const n = counts.get(name) ?? 0;
-      counts.set(name, n + 1);
-      if (next === null && !liveIslands.some((i) => i.root === el)) {
-        next = el;
-        instance = n;
-      }
-    }
-    if (next === null) {
-      // The batch is fully mounted, so the page's layout has settled — re-measure every
-      // `measure=>` element against its final position (the wire overlays depend on it).
-      scheduleRemeasure();
-      return;
-    }
-    // A static-paint island (`data-static`): the server computed it once and serialized
-    // the result, so there is nothing for the client to run — adopt the served DOM as-is,
-    // no guest mount, no re-run. The nested-live guard is defence in depth: a static
-    // island declares no nested live (the guest disqualifies one that does), so a wrapper
-    // with a live descendant is a bug — fall back to a real mount rather than strand it.
-    if (next.hasAttribute('data-static') && !next.querySelector('idyll-live[data-i]')) {
-      liveIslands.push(new StaticIsland(next));
+  for (const el of wrappers) {
+    const name = el.getAttribute('data-i');
+    const instance = counts.get(name) ?? 0;
+    counts.set(name, instance + 1);
+    // A static-paint island: the server computed it once and serialized the result, so
+    // there is nothing for the client to run — adopt the served DOM as-is.
+    if (isStaticPaint(el)) {
+      islandsByRoot.set(el, new StaticIsland(el));
       continue;
     }
-    // A live nested in another live's paint mounts under it — the parent's
-    // context (its provided store) reaches it through the membrane's parent chain.
-    // A top-level live has no parent: it is a root mount.
-    const parentEl = next.parentElement?.closest('idyll-live[data-i]');
-    const parent = parentEl
-      ? (liveIslands.find((i) => i.root === parentEl)?.ref() ?? null)
-      : null;
-    const live = new Live(next.getAttribute('data-i'), instance, next);
-    liveIslands.push(live);
-    await live.boot(seed, claim, parent);
-    if (claim && performance.now() >= deadline) {
+    await mountIsland(el, instance, seed, /* claim */ true);
+    if (performance.now() >= deadline) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       deadline = performance.now() + FRAME_BUDGET_MS;
     }
   }
+  for (const [name, count] of counts) nextInstance.set(name, count);
 }
 
-/** A splice inside a live live (a tracked `@rendered` replacing content) can carry
- * live markers — content the guest built, which the guest cannot mount browser-side.
- * Whoever splices content containing a live owes it a mount: after any structural
- * apply, reconcile the document's wrappers against the live set (dispose the
- * disconnected, mount the new — fresh builds against the current seed, live store
- * inherited through their parent's context). Microtask-debounced; one pass covers a
- * whole flush. */
+/** A static island declares no nested live (the guest disqualifies one that does), so a
+ * wrapper with a live descendant is a bug — it gets a real mount rather than being
+ * stranded. */
+function isStaticPaint(el) {
+  return el.hasAttribute('data-static') && !el.querySelector('idyll-live[data-i]');
+}
+
+/** Mount every wrapper the fold has built that is now in the document, fresh against the
+ * current seed. A wrapper one of these mounts builds joins the next round, after the live
+ * that built it — so each is mounted under its parent. */
+async function mountBuiltWrappers(seed) {
+  for (;;) {
+    const ready = [...unmountedWrappers].filter((el) => el.isConnected);
+    if (ready.length === 0) break;
+    for (const el of ready) {
+      for (const url of CHUNKS?.live[el.getAttribute('data-i')] ?? []) fetchChunk(url).catch(() => {});
+    }
+    for (const el of ready) {
+      unmountedWrappers.delete(el);
+      const name = el.getAttribute('data-i');
+      const instance = nextInstance.get(name) ?? 0;
+      nextInstance.set(name, instance + 1);
+      await mountIsland(el, instance, seed, /* claim */ false);
+    }
+  }
+  scheduleRemeasure();
+}
+
+/** A live nested in another live mounts under it — the parent's context (its provided
+ * store) reaches it through the membrane's parent chain. A top-level live is a root
+ * mount. */
+async function mountIsland(el, instance, seed, claim) {
+  const parentEl = el.parentElement?.closest('idyll-live[data-i]');
+  const parent = parentEl ? (islandsByRoot.get(parentEl)?.ref() ?? null) : null;
+  const live = new Live(el.getAttribute('data-i'), instance, el);
+  islandsByRoot.set(el, live);
+  await live.boot(seed, claim, parent);
+}
+
+/** Dispose the islands whose wrappers `node` is or holds: the fold dropped it. Innermost
+ * first, so no live is unmounted while one inside it is still mounted. */
+function retireIslandsIn(node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+  const wrappers = [...node.querySelectorAll('idyll-live[data-i]')];
+  if (node.matches('idyll-live[data-i]')) wrappers.unshift(node);
+  for (let i = wrappers.length - 1; i >= 0; i--) {
+    const el = wrappers[i];
+    unmountedWrappers.delete(el);
+    islandsByRoot.get(el)?.dispose();
+    islandsByRoot.delete(el);
+  }
+}
+
+/** A splice inside a live can carry wrappers — content the guest built, which the guest
+ * cannot mount browser-side. Whoever splices content containing a live owes it a mount:
+ * after a structural apply that placed one, mount it. Microtask-debounced; one pass covers
+ * a whole flush. */
 let reconcileQueued = false;
 function scheduleIslandReconcile() {
   if (!live || reconcileQueued || currentSeed === null) return;
   reconcileQueued = true;
   queueMicrotask(() => {
     reconcileQueued = false;
-    mountIslands(document, currentSeed, /* claim */ false).catch((err) =>
-      console.error('idyll: live reconcile after splice failed', err)
+    mountBuiltWrappers(currentSeed).catch((err) =>
+      console.error('idyll: mounting spliced lives failed', err)
     );
   });
 }
@@ -1878,12 +1908,15 @@ async function boot() {
   const seedValue = window.__IDYLL_SEED__;
   if (seedValue !== undefined) {
     currentSeed = new TextEncoder().encode(JSON.stringify(seedValue));
-    await mountIslands(document, currentSeed, /* claim */ true);
+    await hydrateIslands(currentSeed);
   }
 
   live = true;
   // Replay everything the user did while the wasm was loading, in order.
   for (const rec of queue.splice(0)) deliver(rec);
+  // Lives built off the served DOM during hydration (rows the paint did not show) are
+  // mounted now that the page is live.
+  if (unmountedWrappers.size > 0) scheduleIslandReconcile();
 }
 
 boot();
@@ -1930,5 +1963,14 @@ if (window.__IDYLL_DEV__) {
 }
 
 // Inert in the browser (nothing imports this module); the fold harness
-// (`crates/idyll-serve/runtime/harness`) drives the same class the page runs.
-export { Live, newFold, planRegions, RULES, injectStyles, replaceStyles };
+// (`crates/idyll-serve/runtime/harness`) drives the same class and registries the page runs.
+export {
+  Live,
+  newFold,
+  planRegions,
+  RULES,
+  injectStyles,
+  replaceStyles,
+  islandsByRoot,
+  unmountedWrappers,
+};
