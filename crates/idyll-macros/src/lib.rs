@@ -276,6 +276,11 @@ enum Directive {
     /// `live_view!` content is not composed, it is *placed*: `(expr)` over a `View`
     /// (mounted once) or a `Signal<View>`/`Computed<View>` (a tracked splice).
     Content { expr: Expr },
+    /// `@dangerouslyUnescapedHtml(expr)` — markup written out exactly as given: never
+    /// escaped, and never walked by the framework, whose nodes there are the browser's
+    /// parse of the string. Read once, at view construction. Keeping it safe is the
+    /// author's job, which is what the name says.
+    UnescapedHtml { expr: Expr },
     /// `@live(app::live::Def)` / `@live(Def, key = expr)` — a live
     /// **marker**: a named hole where live code mounts. Emits a first-class
     /// [`TplNode::Live`]; no component runs here. The `LiveDef` path resolves
@@ -578,6 +583,12 @@ fn parse_directive(input: ParseStream) -> Result<Node> {
             parenthesized!(expr_content in input);
             let expr: Expr = expr_content.parse()?;
             return Ok(Node::Directive(Directive::Content { expr }));
+        }
+        if component == "dangerouslyUnescapedHtml" {
+            let expr_content;
+            parenthesized!(expr_content in input);
+            let expr: Expr = expr_content.parse()?;
+            return Ok(Node::Directive(Directive::UnescapedHtml { expr }));
         }
         if component == "live" {
             // A marker, not a component: the typed `LiveDef` path, so the name and
@@ -950,11 +961,19 @@ enum IrNode {
     /// a runtime expression, which forces the whole template into its runtime-built
     /// form.
     Live { name: TokenStream2, key: Option<TokenStream2> },
+    /// `@dangerouslyUnescapedHtml(expr)`: the markup expression, read at view
+    /// construction — so a template holding one is always runtime-built.
+    UnescapedHtml(TokenStream2),
 }
 
 /// Flatten a subtree pre-order into `TplNode` constructor tokens.
 fn ir_node_tokens(node: &IrNode, out: &mut Vec<TokenStream2>) {
     match node {
+        IrNode::UnescapedHtml(expr) => out.push(quote! {
+            ::idyll::template::TplNode::DangerouslyUnescapedHtml(::std::borrow::Cow::Owned(
+                ::std::convert::Into::<::std::string::String>::into(#expr),
+            ))
+        }),
         IrNode::Text(text) => out.push(quote! {
             ::idyll::template::TplNode::Text(::std::borrow::Cow::Borrowed(#text))
         }),
@@ -1901,6 +1920,12 @@ impl Codegen {
                 unreachable!("live_view! rejects @content in validate_no_eager_content")
             }
 
+            Directive::UnescapedHtml { expr } => {
+                // The markup is a construction-time value, so the template is built then.
+                self.has_runtime_ir = true;
+                self.push_ir(IrNode::UnescapedHtml(quote! { #expr }));
+            }
+
             Directive::Live { name, key } => {
                 // A pure IR marker — no slot, no builder machinery; `LiveView::new`
                 // derives the live list from the IR itself.
@@ -2334,6 +2359,7 @@ fn validate_parser_fixed_points(nodes: &[Node], parent: Option<&Ident>) -> syn::
                 // stated, accepted blind spot of eager value composition.
                 Directive::Component { .. }
                 | Directive::Content { .. }
+                | Directive::UnescapedHtml { .. }
                 | Directive::Live { .. }
                 | Directive::LiveCall { .. } => {}
             },
@@ -2496,6 +2522,7 @@ impl CaptureCollector {
                 }
             }
             Node::Directive(Directive::Content { expr })
+            | Node::Directive(Directive::UnescapedHtml { expr })
             | Node::Directive(Directive::LiveCall { expr }) => self.visit_expr(expr),
             Node::Directive(Directive::Live { key, .. }) => {
                 if let Some(key) = key {
@@ -3093,6 +3120,11 @@ fn view_directive(dir: &Directive) -> Result<TokenStream2> {
                 __styles.extend(__tpl.styles.into_owned());
             }
         }),
+        Directive::UnescapedHtml { expr } => {
+            let mut node = Vec::new();
+            ir_node_tokens(&IrNode::UnescapedHtml(quote! { #expr }), &mut node);
+            Ok(quote! { #(__nodes.push(#node);)* })
+        }
         Directive::Component { component, .. } => Err(syn::Error::new_spanned(
             component,
             "child components are live — mount them from a component (`live_view!`), \
@@ -5980,6 +6012,9 @@ pub fn guest(input: TokenStream) -> TokenStream {
                         ::idyll::template::TplNode::Text(text) => TplNode::Text(text.to_string()),
                         ::idyll::template::TplNode::TextSlot(slot) => TplNode::TextSlot(slot.0),
                         ::idyll::template::TplNode::AnchorSlot(slot) => TplNode::AnchorSlot(slot.0),
+                        ::idyll::template::TplNode::DangerouslyUnescapedHtml(markup) => {
+                            TplNode::DangerouslyUnescapedHtml(markup.to_string())
+                        }
                         ::idyll::template::TplNode::Element { tag, attrs, slot, children } => {
                             TplNode::Element(TplElement {
                                 tag: tag.to_string(),

@@ -25,13 +25,20 @@ globalThis.addEventListener = dom.window.addEventListener.bind(dom.window);
 const { Live, newFold, RULES, injectStyles, islandsByRoot, unmountedWrappers } =
   await import('../runtime.js');
 
-/** A comparable clone: anchor comments are claim-time bookkeeping, not content. */
-function withoutComments(node) {
+/** A comparable clone: the fold's anchor comments are its bookkeeping, not content — but
+ * a comment the content itself carries (in unescaped markup) stays. */
+function withoutAnchors(node, fold) {
+  const comments = (root) => {
+    const walker = document.createTreeWalker(root, dom.window.NodeFilter.SHOW_COMMENT);
+    const found = [];
+    while (walker.nextNode()) found.push(walker.currentNode);
+    return found;
+  };
+  const originals = comments(node);
   const clone = node.cloneNode(true);
-  const walker = document.createTreeWalker(clone, dom.window.NodeFilter.SHOW_COMMENT);
-  const comments = [];
-  while (walker.nextNode()) comments.push(walker.currentNode);
-  for (const comment of comments) comment.remove();
+  comments(clone).forEach((comment, i) => {
+    if (fold.anchorIds.has(originals[i])) comment.remove();
+  });
   clone.normalize();
   return clone;
 }
@@ -97,7 +104,7 @@ function checkBuild(name, commands, html) {
   const live = new Live(name, 0, wrapper, newFold());
   live.applyAll(commands);
 
-  const built = withoutComments(wrapper);
+  const built = withoutAnchors(wrapper, live.fold);
   const expected = parseHtml(html);
   if (!built.isEqualNode(expected)) {
     fail(
@@ -129,7 +136,7 @@ function checkClaim(name, commands, html) {
       return;
     }
   }
-  if (withoutComments(wrapper).isEqualNode(parseHtml(html)) === false) {
+  if (withoutAnchors(wrapper, live.fold).isEqualNode(parseHtml(html)) === false) {
     fail(name, 'claim changed the document', `after: ${wrapper.innerHTML}`);
   }
 

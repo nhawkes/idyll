@@ -459,6 +459,9 @@ fn tpl_node(node: TplNode) -> idyll::template::TplNode {
         TplNode::Text(text) => idyll::template::TplNode::Text(text.into()),
         TplNode::TextSlot(slot) => idyll::template::TplNode::TextSlot(SlotId(slot)),
         TplNode::AnchorSlot(slot) => idyll::template::TplNode::AnchorSlot(SlotId(slot)),
+        TplNode::DangerouslyUnescapedHtml(markup) => {
+            idyll::template::TplNode::DangerouslyUnescapedHtml(markup.into())
+        }
         TplNode::Element(el) => idyll::template::TplNode::Element {
             tag: el.tag.into(),
             attrs: el

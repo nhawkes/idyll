@@ -111,6 +111,20 @@ fn an_island_free_view_reports_no_islands() {
     assert!(view_html(&body, []).contains("Just words"));
 }
 
+#[test]
+fn unescaped_markup_is_written_out_verbatim() {
+    let markup = String::from("<b>bold</b> & <i>it</i>");
+    let body = view! {
+        p { "1 < 2 " @dangerouslyUnescapedHtml(markup) }
+    };
+    let html = view_html(&body, []);
+    assert!(
+        html.contains("<p>1 &lt; 2 <b>bold</b> & <i>it</i></p>"),
+        "the markup is escaped or the text is not: {}",
+        html.as_str()
+    );
+}
+
 // ── Cross-mount context inheritance: the store-root spine ─────────────────────
 //
 // The guest mounts every live into ONE runtime; a child live's scope parents to

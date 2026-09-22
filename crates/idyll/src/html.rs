@@ -64,6 +64,9 @@ enum Node {
     },
     /// A text node — static text, or the target of a `SetText` (a materialized text slot).
     Text(String),
+    /// Markup written out verbatim
+    /// ([`TplNode::DangerouslyUnescapedHtml`](crate::template::TplNode::DangerouslyUnescapedHtml)).
+    Unescaped(String),
     /// A control-flow insertion point (an anchor slot) or a fragment anchor. Serializes
     /// as its children only — the anchor itself is scaffolding. A detached anchor (a
     /// `keep` branch switched away) keeps its children but serializes nothing until
@@ -340,6 +343,10 @@ impl HtmlFold {
                 out.push(TplNode::Text(text.clone().into()));
                 1
             }
+            Node::Unescaped(markup) => {
+                out.push(TplNode::DangerouslyUnescapedHtml(markup.clone().into()));
+                1
+            }
             Node::Anchor { children, detached } => {
                 if *detached {
                     return 0;
@@ -445,6 +452,7 @@ impl HtmlFold {
     ) {
         match &self.arena[idx] {
             Node::Text(text) => sink.buf.push_str(&html_escape::encode_text(text)),
+            Node::Unescaped(markup) => sink.buf.push_str(markup),
             Node::Anchor { children, detached } => {
                 if *detached {
                     return;
@@ -524,6 +532,7 @@ impl HtmlFold {
         *cursor += 1;
         match node {
             TplNode::Text(text) => self.push(Node::Text(text.to_string())),
+            TplNode::DangerouslyUnescapedHtml(markup) => self.push(Node::Unescaped(markup.to_string())),
             TplNode::TextSlot(slot) => {
                 let idx = self.push(Node::Text(String::new()));
                 self.slot_scratch.insert(*slot, idx);
@@ -637,7 +646,7 @@ impl HtmlFold {
                 Node::Element { children, .. } | Node::Anchor { children, .. } => {
                     children.retain(|&c| c != idx);
                 }
-                Node::Text(_) | Node::Live { .. } => {}
+                Node::Text(_) | Node::Unescaped(_) | Node::Live { .. } => {}
             },
             // A **top-level** anchor (a child spliced among the document/live roots)
             // detaches from the roots list itself — the same special case `MoveFragment`
@@ -660,7 +669,7 @@ impl HtmlFold {
                     children.insert(pos.unwrap_or(children.len()), idx);
                 }
             }
-            Node::Text(_) | Node::Live { .. } => {}
+            Node::Text(_) | Node::Unescaped(_) | Node::Live { .. } => {}
         }
         self.parent.insert(idx, parent);
     }

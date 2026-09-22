@@ -26,8 +26,9 @@ package idyll:ssr@0.1.0;
 world app {
     /// The **Template IR** on the wire: a template is a flat, pre-order list of typed
     /// nodes (the component model has no recursive types; child counts reconstruct the
-    /// tree). Slots are first-class node kinds — no markers exist in any markup, because
-    /// no markup exists: the browser builds/claims DOM directly from this data.
+    /// tree). Slots are first-class node kinds — no markers exist in any markup: the
+    /// browser builds/claims DOM directly from this data. The one node that is markup is
+    /// `dangerously-unescaped-html`, written out verbatim and never looked inside.
     record tpl-attr { name: string, value: string }
     record tpl-element { tag: string, attrs: list<tpl-attr>, slot: option<u32>, children: u32 }
     /// A live boundary — first-class in the IR (never a marker element or `data-`
@@ -39,6 +40,7 @@ world app {
         text(string),
         text-slot(u32),
         anchor-slot(u32),
+        dangerously-unescaped-html(string),
         live(tpl-live),
     }
     type template = list<tpl-node>;

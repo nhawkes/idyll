@@ -148,7 +148,7 @@ fn slots_of(template: &Template) -> Vec<u32> {
         .filter_map(|node| match node {
             TplNode::Element { slot, .. } => slot.map(|s| s.0),
             TplNode::TextSlot(slot) | TplNode::AnchorSlot(slot) => Some(slot.0),
-            TplNode::Text(_) | TplNode::Live { .. } => None,
+            TplNode::Text(_) | TplNode::DangerouslyUnescapedHtml(_) | TplNode::Live { .. } => None,
         })
         .collect()
 }

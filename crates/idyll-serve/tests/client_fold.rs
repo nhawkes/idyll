@@ -61,6 +61,9 @@ fn wire_template(template: &Template) -> serde_json::Value {
             TplNode::Text(text) => json!({ "tag": "text", "val": text }),
             TplNode::TextSlot(slot) => json!({ "tag": "text-slot", "val": slot.0 }),
             TplNode::AnchorSlot(slot) => json!({ "tag": "anchor-slot", "val": slot.0 }),
+            TplNode::DangerouslyUnescapedHtml(markup) => {
+                json!({ "tag": "dangerously-unescaped-html", "val": markup })
+            }
             TplNode::Element { tag, attrs, slot, children } => json!({
                 "tag": "element",
                 "val": {
@@ -255,6 +258,24 @@ async fn empty_between(ctx: Ctx<Setup, Never>) -> idyll::Result {
         .await?)
 }
 
+/// Markup passed through verbatim: text at its edges joins the text around it, inside an
+/// `<svg>` it is SVG, and in rows it is placed like any other node.
+async fn unescaped(ctx: Ctx<Setup, Never>) -> idyll::Result {
+    let order = ctx.mutable_signal(vec![1u32, 2]);
+    let icon = String::from("<path d=\"M0 0h8\"></path>");
+    Ok(ctx
+        .render(live_view! {
+            p { "a" @dangerouslyUnescapedHtml("b<i>c</i>d") "e" }
+            svg { @dangerouslyUnescapedHtml(icon) }
+            ul {
+                @for n in $order [key = *n] {
+                    li { @dangerouslyUnescapedHtml("<b>row</b><!--note-->") }
+                }
+            }
+        })
+        .await?)
+}
+
 struct Hide;
 
 /// A kept branch hidden before the stream ends: the server never painted it, so a claim
@@ -383,6 +404,7 @@ fn the_client_fold_converges_with_the_server_fold() {
         ),
         ("nested-rows", mount_stream::<NestedMsg, _>(nested_rows), false),
         ("text-rows", mount_stream::<Never, _>(text_rows), false),
+        ("unescaped", mount_stream::<Never, _>(unescaped), false),
         ("empty-between", mount_stream::<Never, _>(empty_between), false),
         ("hidden-kept", driven_stream(hidden_kept, [Hide]), false),
     ] {

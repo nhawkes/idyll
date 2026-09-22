@@ -7,10 +7,11 @@
 // The app has one render output — **templates as typed IR** (flat pre-order node lists;
 // slots are first-class node kinds) plus a stream of DOM commands — and every way of
 // showing it is a fold of that output: the server folds it to an HTML string (`fold_html`
-// in idyll); this folds the *identical* data into the live document. Nothing here parses
-// markup: build mode materializes DOM straight from the IR (`createElement` /
-// `createTextNode` — no `innerHTML`, so no parser quirks), and a claim walks the same IR
-// in document order, taking each node the server rendered instead of making it.
+// in idyll); this folds the *identical* data into the live document. Build mode
+// materializes DOM straight from the IR (`createElement` / `createTextNode`), and a claim
+// walks the same IR in document order, taking each node the server rendered instead of
+// making it. The one place markup is parsed is a `dangerously-unescaped-html` node, which
+// is markup by definition — parsed where it stands, as the browser parsed the served page.
 //
 // This file ships only on pages whose paint declared live (a markerless page in
 // prod carries no framework at all; dev adds it everywhere for the reload client).
@@ -1501,6 +1502,15 @@ class Live {
           inner.finish();
           break;
         }
+        case 'dangerously-unescaped-html':
+          // Markup, not data: what stands here is the browser's parse of it, and the
+          // walk places each parsed node without looking inside it. A text among them
+          // joins the text around it, as any text does.
+          for (const parsed of parseMarkup(node.val, ns)) {
+            if (parsed.nodeType === Node.TEXT_NODE) dom.text(parsed.data, reserve());
+            else dom.adopt(parsed, reserve());
+          }
+          break;
         case 'live': {
           // The fallback stands in the wrapper until this live's own mount paints over
           // it — the same rule the server fold applies. A claimed wrapper holds whatever
@@ -1542,6 +1552,10 @@ class BuildCursor {
   }
   /** The live boundary's DOM edge format (identity lives in the IR). A wrapper built
    * here is one this runtime owes a mount, so it is recorded as it is made. */
+  adopt(node, use) {
+    this.parent.appendChild(node);
+    use(node);
+  }
   live(v) {
     const el = document.createElement('idyll-live');
     el.setAttribute('data-i', v.name);
@@ -1599,6 +1613,21 @@ class ClaimCursor {
   element(v, ns) {
     return this.take(v.tag, ns ?? HTML_NS);
   }
+  /** A node of unescaped markup: the served node in its place must be the same kind,
+   * and what is inside it is not the claim's to check. */
+  adopt(node, use) {
+    this.endRun();
+    const served = this.next;
+    if (
+      served?.nodeType !== node.nodeType ||
+      served.nodeName !== node.nodeName ||
+      served.namespaceURI !== node.namespaceURI
+    ) {
+      throw claimMismatch(describe(node), served);
+    }
+    this.next = served.nextSibling;
+    use(served);
+  }
   live(v) {
     const el = this.take('idyll-live', HTML_NS);
     if (el.getAttribute('data-i') !== v.name) {
@@ -1648,6 +1677,19 @@ class ClaimCursor {
       ref = piece;
     }
   }
+}
+
+/** The browser's parse of `markup` standing where namespace `ns` holds: in SVG it makes
+ * SVG, anywhere else HTML. */
+function parseMarkup(markup, ns) {
+  if (ns === SVG_NS) {
+    const context = document.createElementNS(SVG_NS, 'svg');
+    context.innerHTML = markup;
+    return [...context.childNodes];
+  }
+  const context = document.createElement('template');
+  context.innerHTML = markup;
+  return [...context.content.childNodes];
 }
 
 function claimMismatch(expected, served) {

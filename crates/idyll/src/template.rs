@@ -91,6 +91,10 @@ pub enum TplNode {
     /// A control-flow / child-component insertion point: materialized as an anchor
     /// (a comment node in the live DOM; a positional anchor in the HTML fold's arena).
     AnchorSlot(SlotId),
+    /// Markup passed through verbatim (`@dangerouslyUnescapedHtml`): the HTML fold writes
+    /// it unescaped, and the browser's parse of it is whatever nodes stand there. No fold
+    /// looks inside it. The one node kind that is markup rather than typed data.
+    DangerouslyUnescapedHtml(Cow<'static, str>),
     /// An **live boundary**: the named bridge from static content to interactivity —
     /// first-class in the IR like every other framework concept (never a marker element
     /// or `data-` attribute recovered by string comparison). The folds serialize it

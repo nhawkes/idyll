@@ -25,6 +25,7 @@ fn ir_html(template: &idyll::template::Template) -> String {
             *cursor += 1;
             match node {
                 TplNode::Text(t) => out.push_str(t),
+                TplNode::DangerouslyUnescapedHtml(markup) => out.push_str(markup),
                 TplNode::TextSlot(_) | TplNode::AnchorSlot(_) => {}
                 TplNode::Element { tag, children, .. } => {
                     out.push('<');
