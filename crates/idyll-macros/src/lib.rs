@@ -4036,6 +4036,7 @@ enum FragSel {
     Leaf(Ident),
     Spread { edge: Ident, child: Ident },
     List { edge: Ident, child: Ident },
+    Optional { edge: Ident, child: Ident },
 }
 
 struct FragmentInput {
@@ -4082,6 +4083,10 @@ fn parse_frag_selections(content: ParseStream) -> Result<Vec<FragSel>> {
                 bracketed!(inner in content);
                 let child: Ident = inner.parse()?;
                 selections.push(FragSel::List { edge: field, child });
+            } else if content.peek(Token![?]) {
+                content.parse::<Token![?]>()?;
+                let child: Ident = content.parse()?;
+                selections.push(FragSel::Optional { edge: field, child });
             } else {
                 let child: Ident = content.parse()?;
                 selections.push(FragSel::Spread { edge: field, child });
@@ -4286,6 +4291,12 @@ fn materialize_selection(
                             )
                         },
                     ),
+                    idyll_schema::FieldType::Optional { .. } => {
+                        return Err(syn::Error::new(
+                            edge.span(),
+                            format!("`{scope}.{edge}` is optional in the schema — select it as `{edge}: ?{child}`"),
+                        ))
+                    }
                     other => {
                         return Err(syn::Error::new(
                             edge.span(),
@@ -4354,6 +4365,55 @@ fn materialize_selection(
                 };
                 out.fields.push(quote! { #vis #edge: #field_ty });
                 out.inits.push(init);
+            }
+            FragSel::Optional { edge, child } => {
+                let def = field_def(edge)?;
+                let edge_str = edge.to_string();
+                let idyll_schema::FieldType::Optional { of } = &def.ty else {
+                    return Err(syn::Error::new(
+                        edge.span(),
+                        format!("`{scope}.{edge}` is {:?} in the schema — not an optional edge", def.ty),
+                    ));
+                };
+                out.sel_entries.push(quote! {
+                    ::idyll_data::Sel::Optional {
+                        edge: #edge_str,
+                        frag: <#child as ::idyll_data::Fragment>::DEF,
+                    }
+                });
+                let (target, field_ty, init) = match &**of {
+                    idyll_schema::FieldType::Ref { node } => (
+                        node.clone(),
+                        quote! { ::core::option::Option<::idyll_data::Frag<#child>> },
+                        quote! {
+                            ::core::option::Option::map(
+                                ::idyll_data::field_value(record, #scope, #edge_str),
+                                ::idyll_data::Frag::from_id,
+                            )
+                        },
+                    ),
+                    idyll_schema::FieldType::Value { value } => (
+                        value.clone(),
+                        quote! { ::core::option::Option<#child> },
+                        quote! {
+                            match ::idyll_data::field_json(record, #scope, #edge_str) {
+                                ::idyll_data::serde_json::Value::Null => ::core::option::Option::None,
+                                target => ::core::option::Option::Some(
+                                    <#child as ::idyll_data::Fragment>::from_record(&target),
+                                ),
+                            }
+                        },
+                    ),
+                    other => {
+                        return Err(syn::Error::new(
+                            edge.span(),
+                            format!("`{scope}.{edge}` is an optional {other:?} — select optional scalars as a leaf"),
+                        ))
+                    }
+                };
+                out.edge_checks.push(edge_target_check(child, &target, scope, &edge_str));
+                out.fields.push(quote! { #vis #edge: #field_ty });
+                out.inits.push(quote! { #edge: #init });
             }
             FragSel::Enum { field, variants } => {
                 let def = field_def(field)?;

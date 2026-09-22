@@ -32,6 +32,12 @@ pub enum Sel {
         edge: &'static str,
         frag: &'static FragmentDef,
     },
+    /// Follow an *optional* edge (`Option<Ref<_>>`) and spread `frag` on the target when
+    /// there is one.
+    Optional {
+        edge: &'static str,
+        frag: &'static FragmentDef,
+    },
     /// A **query root field**: `post(id: $id): PostCard`. `args` are the resolver's
     /// argument *parameter* names (not the variable names — those are cosmetic and stay
     /// out of the hash), so `post(id:…)` and `post(slug:…)` are distinct operations.
@@ -84,6 +90,7 @@ pub(crate) enum CanonSel {
     Leaf { field: String },
     Spread { edge: String, frag: Box<CanonOp> },
     List { edge: String, frag: Box<CanonOp> },
+    Optional { edge: String, frag: Box<CanonOp> },
     Root {
         field: String,
         args: Vec<String>,
@@ -113,6 +120,7 @@ impl CanonSel {
             CanonSel::List { edge, .. } => (edge.as_str(), 2),
             CanonSel::Root { field, .. } => (field.as_str(), 3),
             CanonSel::Enum { field, .. } => (field.as_str(), 4),
+            CanonSel::Optional { edge, .. } => (edge.as_str(), 5),
         }
     }
 }
@@ -182,6 +190,10 @@ fn canon_selection(selection: &[Sel]) -> Vec<CanonSel> {
                 frag: Box::new(CanonOp::from_def(frag)),
             },
             Sel::List { edge, frag } => CanonSel::List {
+                edge: edge.to_string(),
+                frag: Box::new(CanonOp::from_def(frag)),
+            },
+            Sel::Optional { edge, frag } => CanonSel::Optional {
                 edge: edge.to_string(),
                 frag: Box::new(CanonOp::from_def(frag)),
             },

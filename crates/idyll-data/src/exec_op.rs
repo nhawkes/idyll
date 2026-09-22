@@ -437,7 +437,9 @@ fn check_selection_fetchers<Src: Clone + Send + Sync + 'static>(
     for sel in selection {
         match sel {
             CanonSel::Leaf { .. } | CanonSel::Root { .. } => {}
-            CanonSel::Spread { edge, frag } | CanonSel::List { edge, frag } => {
+            CanonSel::Spread { edge, frag }
+            | CanonSel::List { edge, frag }
+            | CanonSel::Optional { edge, frag } => {
                 if fields_edge_is_ref(fields, edge) {
                     if !resolvers.has_fetcher(frag.on.as_str()) {
                         return Err(ValidateError::MissingFetcher {
@@ -550,6 +552,21 @@ fn validate_selection(
                             || matches!(&**of, FieldType::Value { value } if *value == child.on) => {}
                     other => {
                         return Err(ValidateError::ListEdge {
+                            scope: scope.to_string(),
+                            edge: edge.clone(),
+                            target: child.on.clone(),
+                            found: other.clone(),
+                        })
+                    }
+                }
+                validate_fragment(schema, child)?;
+            }
+            CanonSel::Optional { edge, frag: child } => {
+                match field_type(edge)? {
+                    FieldType::Optional { of }
+                        if matches!(&**of, FieldType::Ref { node } | FieldType::Value { value: node } if *node == child.on) => {}
+                    other => {
+                        return Err(ValidateError::OptionalEdge {
                             scope: scope.to_string(),
                             edge: edge.clone(),
                             target: child.on.clone(),
@@ -733,12 +750,13 @@ fn mask_fields(
                     (edge, serde_json::Value::Array(masked_items))
                 }
             }
-            CanonSel::Spread { edge, frag: child } => {
+            CanonSel::Spread { edge, frag: child } | CanonSel::Optional { edge, frag: child } => {
                 let target = node
                     .get(edge)
                     .cloned()
                     .ok_or_else(|| format!("`{scope}` JSON is missing edge `{edge}`"))?;
-                if fields_edge_is_ref(fields, edge) {
+                let absent = matches!(sel, CanonSel::Optional { .. }) && target.is_null();
+                if absent || fields_edge_is_ref(fields, edge) {
                     (edge, target) // a Node edge rides as its id
                 } else {
                     (edge, mask_selection(schema, child, &target, content)?) // inline value, masked
@@ -860,11 +878,15 @@ fn follow_edges<'a, Src: Clone + Send + Sync + 'static>(
         for sel in selection {
             match sel {
                 CanonSel::Leaf { .. } => {}
-                CanonSel::Spread { edge, frag: child } => {
+                CanonSel::Spread { edge, frag: child }
+                | CanonSel::Optional { edge, frag: child } => {
                     let target = node
                         .get(edge)
                         .cloned()
                         .ok_or_else(|| format!("`{scope}` JSON is missing edge `{edge}`"))?;
+                    if matches!(sel, CanonSel::Optional { .. }) && target.is_null() {
+                        continue;
+                    }
                     if fields_edge_is_ref(fields, edge) {
                         let fetcher = fetchers
                             .get(child.on.as_str())
@@ -987,7 +1009,9 @@ fn fields_edge_is_ref(fields: &[idyll_schema::FieldDef], edge: &str) -> bool {
         .find(|f| f.name == edge)
         .is_some_and(|f| match &f.ty {
             FieldType::Ref { .. } => true,
-            FieldType::List { of } => matches!(&**of, FieldType::Ref { .. }),
+            FieldType::List { of } | FieldType::Optional { of } => {
+                matches!(&**of, FieldType::Ref { .. })
+            }
             _ => false,
         })
 }

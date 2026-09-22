@@ -31,6 +31,9 @@ pub enum ValidateError {
     SpreadEdge { scope: String, edge: String, target: String, found: FieldType },
     /// A list edge whose field isn't a list of the target.
     ListEdge { scope: String, edge: String, target: String, found: FieldType },
+    /// An optional edge whose field isn't an optional reference to (or embedding of) the
+    /// target.
+    OptionalEdge { scope: String, edge: String, target: String, found: FieldType },
     /// An enum selection on a field that isn't sum-typed.
     NotSum { scope: String, field: String },
     /// An enum selection whose field names a type that isn't a schema enum.
@@ -95,6 +98,9 @@ impl std::fmt::Display for ValidateError {
             }
             ListEdge { scope, edge, target, found } => {
                 write!(f, "edge `{scope}.{edge}` is {found:?}, not a list of `{target}`")
+            }
+            OptionalEdge { scope, edge, target, found } => {
+                write!(f, "edge `{scope}.{edge}` is {found:?}, not an optional `{target}`")
             }
             NotSum { scope, field } => write!(f, "`{scope}.{field}` is not a sum-typed field"),
             UnknownEnum { scope, field, name } => {

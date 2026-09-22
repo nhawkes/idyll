@@ -25,6 +25,11 @@ fragment! { PostCard on Post { title, author: Byline, comments: [CommentRow] } }
 query! { PostFeed() { posts: [PostCard] } }
 query! { OnePost($id: u64) { post(id: $id): PostCard } }
 
+fragment! { Saver on User { name, savings: ?Wallet } }
+fragment! { EditedPost on Post { title, author: Saver, editor: ?Saver } }
+
+query! { EditedFeed() { posts: [EditedPost] } }
+
 // ── The server side: schema + resolvers over a toy source ──────────────────────────
 
 fn schema() -> Schema {
@@ -41,6 +46,7 @@ impl Db {
             "title": format!("post {id}"),
             "author": 7,
             "comments": [100, 101],
+            "editor": (id == 2).then_some(8),
         })
     }
 }
@@ -58,7 +64,8 @@ fn resolvers() -> Resolvers<Db> {
 impl idyll_data::Fetch<Db> for RawUser {
     async fn fetch(_db: Db, id: u64) -> Result<RawUser, idyll_data::BoxError> {
         Ok(RawUser(serde_json::json!({
-            "id": id, "name": "Ada", "wallet": { "amount": 5, "currency": "GBP" }
+            "id": id, "name": "Ada", "wallet": { "amount": 5, "currency": "GBP" },
+            "savings": (id == 7).then(|| serde_json::json!({ "amount": 9, "currency": "EUR" })),
         })))
     }
 }
@@ -171,6 +178,32 @@ fn the_full_loop_executes_replays_and_projects() {
     assert_eq!(card.comments.len(), 2);
     let row = block_on(CommentRow::read(&cache, card.comments[1].clone())).now(&turn);
     assert_eq!(row.text, "comment 101");
+}
+
+#[test]
+fn optional_edges_project_absence_as_none() {
+    let schema = schema();
+    let op = idyll_data::CanonOp::from_canonical_json(&EditedFeed::query_file().contents).unwrap();
+    validate(&schema, &op).expect("operation typechecks");
+    let executed = block_on(execute(&schema, &op, &resolvers(), &Db, &serde_json::json!({})))
+        .expect("executes");
+    let preloaded: Preloaded<EditedFeedRoots> =
+        serde_json::from_slice(&executed.to_preloaded_json()).expect("wire shape matches Roots");
+    let (_rt, owner) = test_scope();
+    let cache = preloaded.seed.to_cache(owner).expect("the executed seed replays");
+    let turn = idyll::Turn::for_test();
+    let posts = preloaded.roots.posts();
+
+    let unedited = block_on(EditedPost::read(&cache, posts[0].clone())).now(&turn);
+    assert!(unedited.editor.is_none());
+    let author = block_on(Saver::read(&cache, unedited.author)).now(&turn);
+    assert_eq!(author.savings.map(|savings| savings.amount), Some(9));
+
+    let edited = block_on(EditedPost::read(&cache, posts[1].clone())).now(&turn);
+    let Some(editor) = edited.editor else { panic!("post 2 has an editor") };
+    let editor = block_on(Saver::read(&cache, editor)).now(&turn);
+    assert_eq!(editor.name, "Ada");
+    assert!(editor.savings.is_none());
 }
 
 #[test]
