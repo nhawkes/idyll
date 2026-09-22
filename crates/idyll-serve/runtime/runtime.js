@@ -887,12 +887,14 @@ class Live {
     const removed = new Set();
     let root = null;
     let binds = null;
+    // A slot can be bound to more than one id — one per binding on the same element —
+    // and every one of them names the node placed there.
     const mount = (template) => {
       const instance = { template, binds: new Map(), detached: false };
       binds = instance.binds;
       return instance;
     };
-    for (const c of commands) {
+    for (const [at, c] of commands.entries()) {
       const v = c.val;
       switch (c.tag) {
         case 'replace-template':
@@ -903,11 +905,12 @@ class Live {
           break;
         case 'bind-slot':
           if (binds === null) throw new Error(`bind-slot: slot ${v.slot} before any mount`);
-          binds.set(v.slot, v.node);
+          if (!binds.has(v.slot)) binds.set(v.slot, []);
+          binds.get(v.slot).push(v.node);
           bound.add(v.node);
           break;
         case 'set-text':
-          text.set(v.node, v.text);
+          text.set(v.node, { text: v.text, at });
           break;
         case 'mount-fragment':
         case 'replace-fragment':
@@ -940,19 +943,27 @@ class Live {
   placeInstance(instance, dom, ns, settled) {
     const tpl = this.mustTemplate(instance.template, 'hydrate');
     const top = [];
+    const ids = (slot) => instance.binds.get(slot) ?? [];
     const slots = {
-      absent: (slot) => settled.removed.has(instance.binds.get(slot)),
-      text: (slot) => settled.text.get(instance.binds.get(slot)) ?? '',
+      absent: (slot) => ids(slot).some((id) => settled.removed.has(id)),
+      // The value the stream set last, through whichever of the slot's ids.
+      text: (slot) => {
+        let last = null;
+        for (const id of ids(slot)) {
+          const set = settled.text.get(id);
+          if (set !== undefined && (last === null || set.at > last.at)) last = set;
+        }
+        return last?.text ?? '';
+      },
       bind: (slot, node) => {
-        const id = instance.binds.get(slot);
-        if (id === undefined) return;
-        settled.unplaced.delete(id);
-        this.fold.nodes.set(id, node);
-        if (node.nodeType === Node.COMMENT_NODE) this.fold.anchorIds.set(node, id);
+        for (const id of ids(slot)) {
+          settled.unplaced.delete(id);
+          this.fold.nodes.set(id, node);
+          if (node.nodeType === Node.COMMENT_NODE) this.fold.anchorIds.set(node, id);
+        }
       },
       region: (slot, pdom, pns) => {
-        const id = instance.binds.get(slot);
-        if (id !== undefined) this.placeRegion(id, pdom, pns, settled);
+        for (const id of ids(slot)) this.placeRegion(id, pdom, pns, settled);
       },
     };
     const ir = tpl.nodes;

@@ -140,6 +140,17 @@ function checkClaim(name, commands, html) {
     fail(name, 'claim changed the document', `after: ${wrapper.innerHTML}`);
   }
 
+  // Every id a build of the stream can address, the claim can too — and nothing else —
+  // or the first update to one of them finds nothing.
+  const reference = new Live(name, 0, document.createElement('div'), newFold());
+  reference.applyAll(commands);
+  const claimed = [...live.fold.nodes.keys()].sort((a, b) => a - b).join(',');
+  const built = [...reference.fold.nodes.keys()].sort((a, b) => a - b).join(',');
+  if (claimed !== built) {
+    fail(name, 'claim addresses different nodes than a build', `claimed: ${claimed}\nbuilt:   ${built}`);
+    return;
+  }
+
   // A post-claim patch must land on the node the claim bound: retarget every text the
   // stream set and confirm the page followed — or, for a text in a branch the stream
   // left detached, the parked node did.
