@@ -230,6 +230,49 @@ async fn row_text_run(ctx: Ctx<Setup, Never>) -> idyll::Result {
         .await?)
 }
 
+/// Rows that are nothing but text, beside text outside the region: the server's HTML
+/// gives the whole line one text node, so every row's text is a piece of it.
+async fn text_rows(ctx: Ctx<Setup, Never>) -> idyll::Result {
+    let order = ctx.mutable_signal(vec![1u32, 2, 3]);
+    Ok(ctx
+        .render(live_view! {
+            p { "[" @for n in $order [key = *n] { $n "," } "]" }
+        })
+        .await?)
+}
+
+/// Text either side of a region that renders nothing, and dynamic texts that are empty:
+/// the server's HTML has one text node where the view has several, and none at all for
+/// an empty text standing alone.
+async fn empty_between(ctx: Ctx<Setup, Never>) -> idyll::Result {
+    let shown = ctx.mutable_signal(false);
+    let empty = ctx.mutable_signal(String::new());
+    Ok(ctx
+        .render(live_view! {
+            div { "a" @if ($shown) { i { "hidden" } } "b" $empty "c" }
+            span { $empty }
+        })
+        .await?)
+}
+
+struct Hide;
+
+/// A kept branch hidden before the stream ends: the server never painted it, so a claim
+/// must build it, parked, rather than find it.
+async fn hidden_kept(ctx: Ctx<Setup, Hide>) -> idyll::Result {
+    let shown = ctx.mutable_signal(true);
+    let label = ctx.mutable_signal("kept".to_string());
+    let mut ctx = ctx
+        .render(live_view! {
+            div { @if[keep] ($shown) { b { $label } } p { "after" } }
+        })
+        .await?;
+    loop {
+        let (Hide, turn) = ctx.recv().await?;
+        shown.set(&turn, false);
+    }
+}
+
 enum NestedMsg {
     Reverse,
     ToggleInner,
@@ -339,6 +382,9 @@ fn the_client_fold_converges_with_the_server_fold() {
             true,
         ),
         ("nested-rows", mount_stream::<NestedMsg, _>(nested_rows), false),
+        ("text-rows", mount_stream::<Never, _>(text_rows), false),
+        ("empty-between", mount_stream::<Never, _>(empty_between), false),
+        ("hidden-kept", driven_stream(hidden_kept, [Hide]), false),
     ] {
         let html = fold_html(&commands);
         let fixture = json!({

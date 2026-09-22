@@ -5,9 +5,10 @@
 //
 // 1. BUILD — apply the stream into an empty wrapper and DOM-compare the result with
 //    the parsed server HTML: the two folds of one stream must agree node for node.
-// 2. CLAIM — apply the same stream against the server HTML in claim mode: every
-//    element and text node of the SSR DOM must survive with identity (adopted, not
-//    rebuilt), and a post-claim `set-text` must land on an adopted node.
+// 2. CLAIM — hydrate the same stream against the server HTML: every element and text
+//    node of the SSR DOM must survive with identity (adopted, not rebuilt), the document
+//    must be unchanged, and a post-claim `set-text` must land on the node it bound. The
+//    same HTML with one node the stream never made must be refused.
 //
 // Usage: node harness.mjs <fixtures-dir>
 
@@ -21,7 +22,7 @@ for (const key of ['window', 'document', 'Node', 'sessionStorage', 'location', '
 }
 globalThis.addEventListener = dom.window.addEventListener.bind(dom.window);
 
-const { Live, newFold, planRegions, RULES, injectStyles, islandsByRoot, unmountedWrappers } =
+const { Live, newFold, RULES, injectStyles, islandsByRoot, unmountedWrappers } =
   await import('../runtime.js');
 
 /** A comparable clone: anchor comments are claim-time bookkeeping, not content. */
@@ -94,8 +95,6 @@ function fail(fixture, what, detail) {
 function checkBuild(name, commands, html) {
   const wrapper = document.createElement('div');
   const live = new Live(name, 0, wrapper, newFold());
-  live.claimPlan = planRegions(commands, live.fold);
-  live.hydrating = false;
   live.applyAll(commands);
 
   const built = withoutComments(wrapper);
@@ -112,18 +111,21 @@ function checkBuild(name, commands, html) {
 
 function checkClaim(name, commands, html) {
   const wrapper = parseHtml(html);
-  const before = [...wrapper.querySelectorAll('*')];
+  const walker = document.createTreeWalker(wrapper, dom.window.NodeFilter.SHOW_ELEMENT | dom.window.NodeFilter.SHOW_TEXT);
+  const before = [];
+  while (walker.nextNode()) before.push(walker.currentNode);
 
   const live = new Live(name, 0, wrapper, newFold());
-  live.claimPlan = planRegions(commands, live.fold);
-  live.hydrating = true;
-  live.applyAll(commands);
-  live.hydrating = false;
-  live.fold.pendingAdopt.clear();
+  try {
+    live.hydrate(commands);
+  } catch (err) {
+    fail(name, 'claim refused the served DOM', err.stack);
+    return;
+  }
 
   for (const el of before) {
     if (!wrapper.contains(el)) {
-      fail(name, 'claim rebuilt instead of adopting', `lost <${el.tagName.toLowerCase()}>: ${el.outerHTML}`);
+      fail(name, 'claim rebuilt instead of adopting', `lost ${el.nodeName.toLowerCase()}: ${el.outerHTML ?? JSON.stringify(el.data)}`);
       return;
     }
   }
@@ -131,16 +133,34 @@ function checkClaim(name, commands, html) {
     fail(name, 'claim changed the document', `after: ${wrapper.innerHTML}`);
   }
 
-  // A post-claim patch must land on an adopted node: retarget every text the
-  // stream set and confirm the live DOM followed.
+  // A post-claim patch must land on the node the claim bound: retarget every text the
+  // stream set and confirm the page followed — or, for a text in a branch the stream
+  // left detached, the parked node did.
   const texts = commands.filter((c) => c.tag === 'set-text' && c.val.text.length > 0);
   for (const [i, c] of texts.entries()) {
-    live.apply({ tag: 'set-text', val: { node: c.val.node, text: `patched-${i}` } });
-    if (!wrapper.textContent.includes(`patched-${i}`)) {
-      fail(name, 'post-claim patch missed', `set-text on node ${c.val.node} did not reach the document`);
+    const text = `patched-${i}`;
+    live.apply({ tag: 'set-text', val: { node: c.val.node, text } });
+    const node = live.fold.nodes.get(c.val.node);
+    const landed = wrapper.contains(node) ? wrapper.textContent.includes(text) : node.data === text;
+    if (!landed) {
+      fail(name, 'post-claim patch missed', `set-text on node ${c.val.node} did not reach its node`);
       return;
     }
   }
+}
+
+/** A served document that is not its stream's must be refused, never adopted: the same
+ * stream against the served HTML with one extra node the stream never made. */
+function checkClaimRefusesTampering(name, commands, html) {
+  const wrapper = parseHtml(html);
+  wrapper.append(document.createElement('ins'));
+  const live = new Live(name, 0, wrapper, newFold());
+  try {
+    live.hydrate(commands);
+  } catch {
+    return;
+  }
+  fail(name, 'claim adopted a document its stream never made', wrapper.innerHTML);
 }
 
 /** Style rules riding the stream's templates land in the runtime's RULES map (the
@@ -219,7 +239,10 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
   // SSR document to adopt: its fold is a post-interaction state, so only the build
   // path replays it. That teardown region is exactly where fold divergence has
   // historically lived, which is why it gets a fixture at all.
-  if (!buildOnly) checkClaim(name, commands, html);
+  if (!buildOnly) {
+    checkClaim(name, commands, html);
+    checkClaimRefusesTampering(name, commands, html);
+  }
   checkStyles(name, commands);
   if (!failed) console.log(`ok [${name}] ${buildOnly ? 'build converges' : 'build+claim converge'} (${commands.length} commands)`);
 }

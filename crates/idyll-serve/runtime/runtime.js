@@ -9,8 +9,8 @@
 // showing it is a fold of that output: the server folds it to an HTML string (`fold_html`
 // in idyll); this folds the *identical* data into the live document. Nothing here parses
 // markup: build mode materializes DOM straight from the IR (`createElement` /
-// `createTextNode` — no `innerHTML`, so no parser quirks), and claim mode tandem-walks
-// the IR against the server-rendered DOM.
+// `createTextNode` — no `innerHTML`, so no parser quirks), and a claim walks the same IR
+// in document order, taking each node the server rendered instead of making it.
 //
 // This file ships only on pages whose paint declared live (a markerless page in
 // prod carries no framework at all; dev adds it everywhere for the reload client).
@@ -464,8 +464,8 @@ function redrawCanvas(el) {
 // event loop between slices so the browser paints and queued input is delivered. The
 // guest drains its Input lane before Idle, so an urgent click landing mid-pump is
 // serviced before a deferred recompute; we reinforce that by yielding eagerly the
-// moment only idle work remains. Hydration is the exception: the claim planner needs
-// the whole self-contained stream up front, so `boot` drains it fully before applying.
+// moment only idle work remains. Hydration is the exception: a claim places the stream's
+// settled shape, so `boot` drains the whole self-contained stream before applying.
 
 /** Effect-step units granted per `flush` slice — small enough that a large `@for`
  * splice cannot monopolize a frame, large enough that ordinary updates settle in one. */
@@ -527,8 +527,8 @@ async function pump(live) {
   }
 }
 
-/** Collect an entire flush into one command list — for hydration, whose claim planner
- * needs the whole self-contained stream before it can align regions to the SSR DOM. */
+/** Collect an entire flush into one command list — for hydration, which settles the
+ * whole self-contained stream before it claims the SSR DOM. */
 function drainFully(live, first) {
   const commands = [...first.commands];
   let done = first.done;
@@ -563,7 +563,7 @@ function deliver(rec) {
 // ids and fragment anchors live in one global space — and a stream returned by ANY
 // export may touch ANY live's nodes (cross-live reactivity through a shared
 // store is ordinary same-thread reactivity in the guest). The fold state is shared
-// to match; an `Live` holds identity and claim-time state, not maps.
+// to match; a `Live` holds its identity and its own subscriptions, not maps.
 
 /** Attributes that must also be reflected onto the live DOM property: a dirty input
  * ignores its `value` *attribute*, and checked/disabled/selected live on the property. */
@@ -588,13 +588,10 @@ function newFold() {
     regions: { byHead: new Map(), rowOf: new Map() },
     /** Anchor node → its node id, to go from a fragment's nodes to what they own. */
     anchorIds: new WeakMap(),
-    /** template ids stashed for fragments mounted while their anchor was unpositioned. */
-    pendingAdopt: new Map(),
     /**
      * Anchor node → the namespace its rows must be created in — the host context of
-     * that position. Recorded where the anchor is made (build threads it down the IR
-     * walk; claim reads the SSR parent, which the HTML parser namespaced correctly),
-     * because by mount time the anchor may still be parked off-tree and its eventual
+     * that position. Recorded where the anchor is made (the IR walk threads it
+     * down), because by mount time the anchor may still be parked off-tree and its eventual
      * parent is unknowable. Keyed by node, so it dies with the anchor.
      */
     nsOf: new WeakMap(),
@@ -633,8 +630,6 @@ class Live {
     /** Slots of the most recently instantiated template: slot (u32) → live DOM node.
      * Stream-scoped scratch — one stream applies through one Live object. */
     this.scratch = new Map();
-    /** Claim mode: fragment mounts adopt the SSR DOM instead of building fresh nodes. */
-    this.hydrating = false;
   }
 
   /** Hydrate: mount in the wasm and fold the (self-contained) initial stream — the root
@@ -838,16 +833,156 @@ class Live {
     }
     // Mount returns a mount-result: the first flush slice plus a static-paint verdict the
     // server already acted on (a static island never reaches here — see `hydrateIslands`).
-    // The claim planner needs the whole self-contained stream to align regions to the SSR
-    // DOM, so drain the flush before applying.
+    // A claim places the stream's settled shape, so drain the whole flush first.
     const commands = drainFully(this, result.flush);
-    this.claimPlan = planRegions(commands, this.fold);
     // First load claims the server's DOM; a live spliced in later (its marker
     // arrived as content, no paint) builds fresh into the empty wrapper.
-    this.hydrating = claim;
-    this.applyAll(commands);
-    this.hydrating = false;
-    this.fold.pendingAdopt.clear();
+    if (!claim) {
+      this.applyAll(commands);
+      return;
+    }
+    try {
+      this.hydrate(commands);
+    } catch (err) {
+      console.error(
+        `idyll live [${this.name}] the served DOM is not its stream's — the live stays inert`,
+        err
+      );
+    }
+  }
+
+  /** Claim the server's DOM for this live's first stream.
+   *
+   * The stream is in execution order: a region's rows are mounted after the template
+   * holding its anchor, and a text slot's value is set after the slot is made. The
+   * served DOM is in document order. So the stream's shape is first settled — what is
+   * mounted where, each row's place, each text's last value — and then placed in one
+   * document-order walk that takes every node the server made instead of making it,
+   * checking each against what the stream says it must be. Only anchors, and texts the
+   * server wrote as nothing, are created. The stream's effects then apply to the claimed
+   * nodes. */
+  hydrate(commands) {
+    const settled = this.settleShape(commands);
+    const dom = new ClaimCursor(this.root);
+    this.placeInstance(settled.root, dom, childNsOf(this.root), settled);
+    dom.finish();
+    for (const c of commands) {
+      if (SHAPE_COMMANDS.has(c.tag)) continue;
+      // Bound, then dropped before the stream ended (a suspense fallback): its node
+      // never reached the served DOM, so neither do its effects.
+      if (settled.unplaced.has(c.val?.node)) continue;
+      this.apply(c);
+    }
+    scheduleRemeasure();
+  }
+
+  /** The stream's shape once every command has landed, without touching the DOM:
+   * templates registered, rows linked in their regions, and per mounted anchor the
+   * template and slot bindings it ended with. */
+  settleShape(commands) {
+    const instances = new Map();
+    const text = new Map();
+    const bound = new Set();
+    const removed = new Set();
+    let root = null;
+    let binds = null;
+    const mount = (template) => {
+      const instance = { template, binds: new Map(), detached: false };
+      binds = instance.binds;
+      return instance;
+    };
+    for (const c of commands) {
+      const v = c.val;
+      switch (c.tag) {
+        case 'replace-template':
+          this.apply(c);
+          break;
+        case 'mount-root':
+          root = mount(v);
+          break;
+        case 'bind-slot':
+          if (binds === null) throw new Error(`bind-slot: slot ${v.slot} before any mount`);
+          binds.set(v.slot, v.node);
+          bound.add(v.node);
+          break;
+        case 'set-text':
+          text.set(v.node, v.text);
+          break;
+        case 'mount-fragment':
+        case 'replace-fragment':
+          instances.set(v.anchor, mount(v.template));
+          break;
+        case 'remove-fragment':
+          instances.delete(c.val);
+          removed.add(c.val);
+          this.unlinkRow(c.val);
+          break;
+        case 'detach-fragment':
+        case 'attach-fragment': {
+          const instance = instances.get(c.val);
+          if (instance) instance.detached = c.tag === 'detach-fragment';
+          break;
+        }
+        case 'move-fragment':
+          this.linkRow(v.anchor, v.after);
+          break;
+      }
+    }
+    if (root === null) throw new Error('hydrate: the stream mounted no root');
+    this.rootMounted = true;
+    return { root, instances, text, removed, unplaced: bound };
+  }
+
+  /** Place one mounted template through `dom`, binding its slots to what the stream
+   * bound them to and placing each region's content at its anchor. Returns its
+   * top-level nodes — a fragment's `nodes`, filled as the walk settles them. */
+  placeInstance(instance, dom, ns, settled) {
+    const tpl = this.mustTemplate(instance.template, 'hydrate');
+    const top = [];
+    const slots = {
+      absent: (slot) => settled.removed.has(instance.binds.get(slot)),
+      text: (slot) => settled.text.get(instance.binds.get(slot)) ?? '',
+      bind: (slot, node) => {
+        const id = instance.binds.get(slot);
+        if (id === undefined) return;
+        settled.unplaced.delete(id);
+        this.fold.nodes.set(id, node);
+        if (node.nodeType === Node.COMMENT_NODE) this.fold.anchorIds.set(node, id);
+      },
+      region: (slot, pdom, pns) => {
+        const id = instance.binds.get(slot);
+        if (id !== undefined) this.placeRegion(id, pdom, pns, settled);
+      },
+    };
+    const ir = tpl.nodes;
+    this.placeNodes(ir, { i: 0 }, ir.length, dom, tpl.svg ? SVG_NS : ns, slots, top);
+    return top;
+  }
+
+  /** Place what anchor `id` owns: its own fragment, then its rows in order, each at its
+   * own anchor. A fragment detached when the stream ended is not in the served DOM; it
+   * is built, parked, as a live one would have been. */
+  placeRegion(id, dom, ns, settled) {
+    this.placeFragment(id, dom, ns, settled);
+    const regions = this.fold.regions;
+    for (let row = regions.byHead.get(id)?.first ?? null; row !== null; row = regions.rowOf.get(row).next) {
+      const anchor = this.ensureAnchor(row);
+      this.fold.nsOf.set(anchor, ns);
+      dom.place(anchor);
+      this.placeFragment(row, dom, ns, settled);
+    }
+  }
+
+  placeFragment(id, dom, ns, settled) {
+    const instance = settled.instances.get(id);
+    if (!instance) return;
+    if (instance.detached) {
+      const parked = document.createDocumentFragment();
+      const nodes = this.placeInstance(instance, new BuildCursor(parked), ns, settled);
+      this.fold.fragments.set(id, { nodes, parked });
+    } else {
+      this.fold.fragments.set(id, { nodes: this.placeInstance(instance, dom, ns, settled), parked: null });
+    }
   }
 
   applyAll(commands) {
@@ -863,15 +998,11 @@ class Live {
   }
 
   /** The stream introduces every consumed id before use (the pinned contract in
-   * `examples/todo/app/tests/command_stream.rs`). On the build path an unknown id is
-   * an emitter bug, and folding past it would paint a wrong document — so the fold
-   * stops loud instead (never silently misclaim). During a hydration claim the map
-   * is still being matched against served DOM, so a miss there belongs to the claim
-   * machinery (probe retirement, skew reload), not to this assertion — the caller
-   * skips the op. */
+   * `examples/todo/app/tests/command_stream.rs`). An unknown id is an emitter bug, and
+   * folding past it would paint a wrong document — so the fold stops loud instead. */
   mustNode(id, tag) {
     const node = this.fold.nodes.get(id);
-    if (node === undefined && !this.hydrating) {
+    if (node === undefined) {
       throw new Error(`${tag}: node ${id} was never introduced by the stream`);
     }
     return node;
@@ -886,58 +1017,33 @@ class Live {
         injectStyles(v.styles);
         break;
       case 'mount-root': {
-        // The stream's explicit root announcement: claim the SSR DOM against the
-        // named template (or build it fresh when there is nothing to claim). Never
-        // inferred — templates are content-addressed, so a remount's root is
-        // already registered and re-emits no replace-template.
+        // The stream's explicit root announcement. Never inferred — templates are
+        // content-addressed, so a remount's root is already registered and re-emits no
+        // replace-template.
         if (this.rootMounted) break; // parity with the server fold's root_materialized guard
         this.rootMounted = true;
         const nodes = this.mustTemplate(v, 'mount-root').nodes;
-        if (this.hydrating) this.claimRoot(nodes);
-        else for (const n of this.buildInto(nodes, childNsOf(this.root))) this.root.appendChild(n);
+        for (const n of this.buildInto(nodes, childNsOf(this.root))) this.root.appendChild(n);
         break;
       }
       case 'bind-slot': {
         const node = this.scratch.get(v.slot);
         if (node === undefined) {
-          // A claim miss belongs to the claim machinery (skipped subtrees leave
-          // slots unresolved); a build-path miss is an emitter bug — a bind against
-          // a stale slot scope — and dropping it would only misblame the first
-          // consuming op later.
-          if (!this.hydrating) {
-            throw new Error(`bind-slot: slot ${v.slot} is not in the current template's scope`);
-          }
-          break;
+          // An emitter bug — a bind against a stale slot scope — and dropping it would
+          // only misblame the first consuming op later.
+          throw new Error(`bind-slot: slot ${v.slot} is not in the current template's scope`);
         }
-        if (node.__pendingText) node.run.queue.find((item) => item.slot === v.slot).node = v.node;
         this.fold.nodes.set(v.node, node);
         if (node.nodeType === Node.COMMENT_NODE) this.fold.anchorIds.set(node, v.node);
         break;
       }
       case 'set-text': {
         const bound = this.mustNode(v.node, 'set-text');
-        if (!bound) break;
-        if (bound.__pendingText) {
-          // A slot claimed inside a merged SSR text node. Its value is one of several the
-          // run needs before the node can be split — a one-shot `(expr)` and a signal's
-          // first value reach here in different passes, not in document order — so it
-          // is held until the run is whole, then every slot is split out at once.
-          bound.run.values.set(bound.slot, v.text);
-          const nodes = resolvePendingRun(bound.run);
-          if (!nodes) break;
-          for (const item of bound.run.queue) {
-            if (item.type !== 'slot') continue;
-            const pending = this.fold.nodes.get(item.node);
-            if (pending?.__pendingText) this.fold.nodes.set(item.node, nodes.get(item.slot));
-          }
-          break;
-        }
         bound.textContent = v.text;
         break;
       }
       case 'set-attr': {
         const el = this.mustNode(v.node, 'set-attr');
-        if (!el) break;
         el.setAttribute(v.name, v.value);
         if (PROPERTY_MIRROR.has(v.name)) el[v.name] = v.value;
         break;
@@ -947,21 +1053,18 @@ class Live {
         // reparsed (the whole point vs. rewriting the style attribute). Empty value
         // clears the property.
         const el = this.mustNode(v.node, 'set-style-prop');
-        if (!el) break;
         if (v.value === '') el.style.removeProperty(v.name);
         else el.style.setProperty(v.name, v.value);
         break;
       }
       case 'remove-attr': {
         const el = this.mustNode(v.node, 'remove-attr');
-        if (!el) break;
         el.removeAttribute(v.name);
         if (PROPERTY_MIRROR.has(v.name)) el[v.name] = v.name === 'value' ? '' : false;
         break;
       }
       case 'set-bool-attr': {
         const el = this.mustNode(v.node, 'set-bool-attr');
-        if (!el) break;
         if (v.value) el.setAttribute(v.name, '');
         else el.removeAttribute(v.name);
         if (v.name in el) el[v.name] = v.value; // checked/disabled/… live on the property
@@ -994,7 +1097,6 @@ class Live {
         break;
       case 'add-event-listener': {
         const el = this.mustNode(v.node, 'add-event-listener');
-        if (!el) break;
         if (!listeners.has(el)) listeners.set(el, new Map());
         listeners.get(el).set(v.eventType, { live: this, handler: v.handler });
         delegate(v.eventType); // the app may use a type outside the preinstalled set
@@ -1004,7 +1106,6 @@ class Live {
         // Not a DOM event: a ResizeObserver delivering the element's root-relative
         // rect — its own command on the wire, so nothing here matches event names.
         const el = this.mustNode(v.node, 'watch-measure');
-        if (!el) break;
         this.watchMeasure(el, v.handler);
         break;
       }
@@ -1018,7 +1119,6 @@ class Live {
         // element, its device-pixel scaling, the per-layer bitmaps, the clear and the
         // strokes.
         const el = this.mustNode(v.node, 'paint');
-        if (!el) break;
         paintCanvas(el, v.layers, v.inks, v.deltas);
         break;
       }
@@ -1206,15 +1306,6 @@ class Live {
   // searching the page.
 
   mountFragment(anchorId, templateId, replace) {
-    // Claim mode, first fill: the server already rendered these nodes — adopt, don't
-    // build. An anchor still floating (no position yet) gets its rows at `move-fragment`.
-    if (this.hydrating && !replace && !this.fold.fragments.has(anchorId)) {
-      const anchor = this.fold.nodes.get(anchorId);
-      if (anchor?.parentNode) this.adoptFragment(anchorId, templateId);
-      else this.fold.pendingAdopt.set(anchorId, templateId);
-      this.ensureAnchor(anchorId);
-      return;
-    }
     if (replace) this.dropFragment(anchorId);
     const anchor = this.ensureAnchor(anchorId);
     if (!anchor.parentNode) this.root.appendChild(anchor); // floating: parked until moved
@@ -1266,11 +1357,16 @@ class Live {
     const anchor = this.ensureAnchor(anchorId);
     // The after-anchor is a reference, never an introduction (contract 3).
     this.mustNode(afterId, 'move-fragment.after');
+    const tail = this.ownEnd(afterId);
+    if (tail.parentNode) insertAfter(tail, siblingsThrough(anchor, this.ownEnd(anchorId)));
+    this.linkRow(anchorId, afterId);
+  }
+
+  /** Record row `anchorId` as directly after `afterId` in `afterId`'s region. */
+  linkRow(anchorId, afterId) {
     const regions = this.fold.regions;
     const head = regions.rowOf.get(afterId)?.head ?? afterId;
     this.unlinkRow(anchorId);
-    const tail = this.ownEnd(afterId);
-    if (tail.parentNode) insertAfter(tail, siblingsThrough(anchor, this.ownEnd(anchorId)));
     const region = regions.byHead.get(head) ?? { first: null, last: null };
     regions.byHead.set(head, region);
     const prev = afterId === head ? null : afterId;
@@ -1280,12 +1376,6 @@ class Live {
     else regions.rowOf.get(prev).next = anchorId;
     if (next === null) region.last = anchorId;
     else regions.rowOf.get(next).prev = anchorId;
-    // Now positioned: adopt any rows that were waiting on a floating anchor.
-    const pending = this.fold.pendingAdopt.get(anchorId);
-    if (pending !== undefined && this.hydrating) {
-      this.fold.pendingAdopt.delete(anchorId);
-      this.adoptFragment(anchorId, pending);
-    }
   }
 
   /** A freed id: out of its region if it was a row, and its rows' links gone if it was a
@@ -1332,191 +1422,245 @@ class Live {
     return last === null ? this.ownEnd(id) : this.ownEnd(last);
   }
 
-  // ── Build mode: materialize DOM straight from the IR ────────────────────────
+  // ── Placing the IR: one walk that either builds each node or claims it ────────
 
   /**
    * Build a template's top-level nodes and refresh `scratch` from its slots. `ns` is
-   * the namespace the caller's insertion point imposes — see [childNsOf].
+   * the namespace the caller's insertion point imposes — see [childNsOf]. Slot values
+   * arrive afterwards, as commands.
    */
   buildInto(ir, ns) {
-    this.scratch = new Map();
-    const cursor = { i: 0 };
+    const scratch = new Map();
+    this.scratch = scratch;
+    const slots = {
+      absent: () => false,
+      text: () => '',
+      bind: (slot, node) => scratch.set(slot, node),
+      region: () => {},
+    };
     const nodes = [];
-    while (cursor.i < ir.length) nodes.push(this.buildNode(ir, cursor, ns));
+    const dom = new BuildCursor(document.createDocumentFragment());
+    this.placeNodes(ir, { i: 0 }, ir.length, dom, ns, slots, nodes);
     return nodes;
   }
 
-  buildNode(ir, cursor, ns) {
-    const node = ir[cursor.i++];
-    switch (node.tag) {
-      case 'text':
-        return document.createTextNode(node.val);
-      case 'text-slot': {
-        const t = document.createTextNode('');
-        this.scratch.set(node.val, t);
-        return t;
-      }
-      case 'anchor-slot': {
-        const anchor = document.createComment('idyll');
-        this.fold.nsOf.set(anchor, ns);
-        this.scratch.set(node.val, anchor);
-        return anchor;
-      }
-      case 'element': {
-        const v = node.val;
-        // Namespace *within* this template: an `svg` subtree builds in the SVG
-        // namespace, `foreignObject` re-enters HTML. Where the template itself sits
-        // is not knowable from here and arrives with it (see [buildTemplate]). Plain
-        // createElement would mint dead HTMLUnknownElements — right tag, right
-        // attributes, no rendering — and the SSR parser namespaces these correctly,
-        // so build mode must match or claim and build disagree.
-        const elNs = v.tag === 'svg' ? SVG_NS : ns;
-        const childNs = v.tag === 'foreignObject' ? undefined : elNs;
-        const el = elNs
-          ? document.createElementNS(elNs, v.tag)
-          : document.createElement(v.tag);
-        for (const attr of v.attrs) el.setAttribute(attr.name, attr.value);
-        if (v.slot !== undefined && v.slot !== null) this.scratch.set(v.slot, el);
-        for (let k = 0; k < v.children; k++) el.appendChild(this.buildNode(ir, cursor, childNs));
-        return el;
-      }
-      case 'live': {
-        // The live boundary's DOM edge format (identity lives in the IR). A wrapper
-        // built here is one this runtime owes a mount, so it is recorded as it is made.
-        const v = node.val;
-        const el = document.createElement('idyll-live');
-        unmountedWrappers.add(el);
-        el.setAttribute('data-i', v.name);
-        if (v.key != null) el.setAttribute('data-k', v.key);
-        el.setAttribute('style', 'display:contents');
-        // The fallback stands in the wrapper until this live's own mount paints over
-        // it — the same rule the server fold applies to the same marker.
-        for (let k = 0; k < v.fallback; k++) el.appendChild(this.buildNode(ir, cursor, ns));
-        return el;
-      }
-    }
-  }
-
-  // ── Claim mode: adopt the SSR DOM by tandem-walking the IR against it ───────
-  //
-  // The served HTML is clean (no scaffolding of any kind); the IR *is* the expected
-  // structure, so the walk lines them up 1:1. Control-flow regions sit anywhere in a
-  // parent (the claim plan knows every region's extent, nested ones included); the
-  // last-dynamic-child contract survives only as the fallback for an unplanned anchor.
-
-  /** Claim the live root: walk `ir` against the live wrapper's children, with the
-   * planned extents of the root template's regions. */
-  claimRoot(ir) {
-    this.scratch = new Map();
-    const cursor = { i: 0 };
-    this.claimChildren(ir, cursor, ir.length, this.root, this.root.firstChild, this.claimPlan.root);
-  }
-
-  /** Claim up to `count` IR nodes against siblings starting at `real`; returns the next
-   * unclaimed sibling.
-   *
-   * Text handling: a maximal run of text-ish IR nodes claims ONE merged SSR text node
-   * with a moving offset. Statics advance the offset eagerly; a text slot binds a
-   * pending marker resolved at its `SetText` (when the value's length is known and the
-   * node can be split precisely). */
-  claimChildren(ir, cursor, count, realParent, real, extents) {
-    let run = null; // active merged-text claim on the current live text node
-    const endRun = () => {
-      if (!run) return;
-      real = run.node.nextSibling;
-      run = null;
+  /**
+   * Place `count` IR nodes from `cursor.i` through `dom`, which makes each node (a
+   * [BuildCursor]) or takes the one the server made (a [ClaimCursor]). `slots` says
+   * what the template's slots hold and are bound to, and what stands at its anchors;
+   * `top`, when given, receives the placed top-level nodes in order.
+   */
+  placeNodes(ir, cursor, count, dom, ns, slots, top) {
+    const reserve = () => {
+      if (top === null) return () => {};
+      const at = top.push(null) - 1;
+      return (node) => {
+        top[at] = node;
+      };
     };
     for (let k = 0; k < count && cursor.i < ir.length; k++) {
       const node = ir[cursor.i++];
-      if (node.tag === 'text' || node.tag === 'text-slot') {
-        if (!run) {
-          if (real?.nodeType === Node.TEXT_NODE) {
-            run = { node: real, offset: 0, blocked: false, queue: [], values: new Map() };
-          } else if (node.tag === 'text-slot') {
-            // Empty SSR text produced no node — materialize one to claim.
-            const t = document.createTextNode('');
-            realParent.insertBefore(t, real ?? null);
-            this.scratch.set(node.val, t);
-            continue;
-          } else {
-            continue; // static text with no live counterpart — nothing to claim
-          }
-        }
-        if (node.tag === 'text') {
-          if (run.blocked) run.queue.push({ type: 'static', text: node.val });
-          else run.offset += node.val.length; // SSR is our own serialization: trusted
-        } else {
-          run.blocked = true;
-          run.queue.push({ type: 'slot', slot: node.val });
-          this.scratch.set(node.val, { __pendingText: true, run, slot: node.val });
-        }
-        continue;
-      }
-      endRun();
       switch (node.tag) {
+        case 'text':
+          dom.text(node.val, reserve());
+          break;
+        case 'text-slot': {
+          const keep = reserve();
+          dom.text(slots.text(node.val), (placed) => {
+            keep(placed);
+            slots.bind(node.val, placed);
+          });
+          break;
+        }
         case 'anchor-slot': {
-          // The IR has an anchor where the live DOM has the expanded rows. Splice a
-          // real anchor in; the rows themselves are adopted at fragment mount.
-          const anchor = document.createComment('idyll');
-          realParent.insertBefore(anchor, real ?? null);
-          this.fold.nsOf.set(anchor, childNsOf(realParent));
-          this.scratch.set(node.val, anchor);
-          const extent = extents?.get(node.val);
-          if (extent === undefined) {
-            // No plan info (row-scope region): the legacy contract applies — the
-            // region must be the last dynamic child of its parent.
-            return real;
+          if (!slots.absent(node.val)) {
+            const anchor = document.createComment('idyll');
+            this.fold.nsOf.set(anchor, ns);
+            dom.place(anchor);
+            reserve()(anchor);
+            slots.bind(node.val, anchor);
           }
-          // Skip exactly the region's SSR nodes and keep claiming after it.
-          for (let s = 0; s < extent && real; s++) real = real.nextSibling;
+          slots.region(node.val, dom, ns);
           break;
         }
         case 'element': {
+          // Namespace *within* this template: an `svg` subtree is SVG, `foreignObject`
+          // re-enters HTML. Where the template itself sits is not knowable from here and
+          // arrives as `ns` (see [buildTemplate]). Plain createElement would mint dead
+          // HTMLUnknownElements — right tag, right attributes, no rendering — and the SSR
+          // parser namespaces these correctly, so build must match or claim and build
+          // disagree.
           const v = node.val;
-          if (!real) {
-            skipSubtree(ir, cursor, v.children);
-            break;
-          }
-          if (v.slot !== undefined && v.slot !== null) this.scratch.set(v.slot, real);
-          this.claimChildren(ir, cursor, v.children, real, real.firstChild, extents);
-          real = real.nextSibling;
+          const elNs = v.tag === 'svg' ? SVG_NS : ns;
+          const el = dom.element(v, elNs);
+          reserve()(el);
+          if (v.slot !== undefined && v.slot !== null) slots.bind(v.slot, el);
+          const inner = dom.enter(el);
+          const childNs = v.tag === 'foreignObject' ? undefined : elNs;
+          this.placeNodes(ir, cursor, v.children, inner, childNs, slots, null);
+          inner.finish();
           break;
         }
         case 'live': {
-          // Claims its serialized wrapper element; the live's own hydration is a
-          // separate mount — this walk only lines the structure up. The fallback is
-          // stepped over rather than claimed: what the server put inside the wrapper
-          // is the paint where the mount succeeded, and the fallback only where it
-          // did not — either way the wrapper is one node to this walk.
-          skipSubtree(ir, cursor, node.val.fallback);
-          if (real) real = real.nextSibling;
+          // The fallback stands in the wrapper until this live's own mount paints over
+          // it — the same rule the server fold applies. A claimed wrapper holds whatever
+          // the server put there, which that live's own mount claims.
+          const v = node.val;
+          const el = dom.live(v);
+          reserve()(el);
+          const fallback = dom.fallback(el);
+          if (fallback === null) skipSubtree(ir, cursor, v.fallback);
+          else this.placeNodes(ir, cursor, v.fallback, fallback, ns, slots, null);
           break;
         }
       }
     }
-    endRun();
-    return real;
-  }
-
-  /** Adopt the server's already-rendered rows for a control-flow fragment: claim the
-   * row template's IR against the live siblings following the anchor, with the planned
-   * extents of any regions nested in these rows (keyed by this instance's anchor). */
-  adoptFragment(anchorId, templateId) {
-    const anchor = this.fold.nodes.get(anchorId);
-    if (!anchor?.parentNode) return;
-    const ir = this.fold.templates[templateId]?.nodes ?? [];
-    this.scratch = new Map();
-    const cursor = { i: 0 };
-    const first = anchor.nextSibling;
-    const extents = this.claimPlan?.rows.get(anchorId) ?? null;
-    const end = this.claimChildren(ir, cursor, ir.length, anchor.parentNode, first, extents);
-    const adopted = [];
-    for (let n = first; n && n !== end; n = n.nextSibling) adopted.push(n);
-    this.fold.fragments.set(anchorId, { nodes: adopted, parked: null });
   }
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
+
+/** The build half of the IR walk: each node is made and appended. */
+class BuildCursor {
+  constructor(parent) {
+    this.parent = parent;
+  }
+  text(data, use) {
+    const node = document.createTextNode(data);
+    this.parent.appendChild(node);
+    use(node);
+  }
+  place(node) {
+    this.parent.appendChild(node);
+  }
+  element(v, ns) {
+    const el = ns ? document.createElementNS(ns, v.tag) : document.createElement(v.tag);
+    for (const attr of v.attrs) el.setAttribute(attr.name, attr.value);
+    this.parent.appendChild(el);
+    return el;
+  }
+  /** The live boundary's DOM edge format (identity lives in the IR). A wrapper built
+   * here is one this runtime owes a mount, so it is recorded as it is made. */
+  live(v) {
+    const el = document.createElement('idyll-live');
+    el.setAttribute('data-i', v.name);
+    if (v.key != null) el.setAttribute('data-k', v.key);
+    el.setAttribute('style', 'display:contents');
+    unmountedWrappers.add(el);
+    this.parent.appendChild(el);
+    return el;
+  }
+  enter(el) {
+    return new BuildCursor(el);
+  }
+  fallback(el) {
+    return new BuildCursor(el);
+  }
+  finish() {}
+}
+
+/** The claim half of the IR walk: each node is the next one the server made, checked
+ * against what the IR says it must be. The HTML parser gives adjacent texts one node,
+ * so texts gather into a run over that node, checked as they arrive and split — from
+ * the back, so each split copies only its own piece — when something else follows. */
+class ClaimCursor {
+  constructor(parent) {
+    this.parent = parent;
+    this.next = parent.firstChild;
+    this.run = null;
+  }
+  text(data, use) {
+    if (data === '') {
+      const empty = document.createTextNode('');
+      this.place(empty);
+      use(empty);
+      return;
+    }
+    if (this.run === null) {
+      const served = this.next;
+      if (served?.nodeType !== Node.TEXT_NODE) throw claimMismatch(`text ${JSON.stringify(data)}`, served);
+      this.run = { text: served, end: served.nextSibling, offset: 0, items: [] };
+      this.next = served.nextSibling;
+    }
+    const run = this.run;
+    if (!run.text.data.startsWith(data, run.offset)) {
+      throw claimMismatch(`text ${JSON.stringify(data)}`, `text ${JSON.stringify(run.text.data.slice(run.offset))}`);
+    }
+    run.items.push({ offset: run.offset, use, node: null });
+    run.offset += data.length;
+  }
+  /** A node the server has none of — an anchor, or a text it wrote as nothing — goes
+   * where it stands, inside the open run if there is one. */
+  place(node) {
+    if (this.run === null) this.parent.insertBefore(node, this.next);
+    else this.run.items.push({ offset: this.run.offset, use: null, node });
+  }
+  element(v, ns) {
+    return this.take(v.tag, ns ?? HTML_NS);
+  }
+  live(v) {
+    const el = this.take('idyll-live', HTML_NS);
+    if (el.getAttribute('data-i') !== v.name) {
+      throw claimMismatch(`live ${JSON.stringify(v.name)}`, `live ${JSON.stringify(el.getAttribute('data-i'))}`);
+    }
+    return el;
+  }
+  take(tag, ns) {
+    this.endRun();
+    const served = this.next;
+    if (served?.nodeType !== Node.ELEMENT_NODE || served.localName !== tag || served.namespaceURI !== ns) {
+      throw claimMismatch(`<${tag}> (${ns})`, served);
+    }
+    this.next = served.nextSibling;
+    return served;
+  }
+  enter(el) {
+    return new ClaimCursor(el);
+  }
+  fallback() {
+    return null;
+  }
+  finish() {
+    this.endRun();
+    if (this.next !== null) throw claimMismatch('nothing more', this.next);
+  }
+  endRun() {
+    const run = this.run;
+    if (run === null) return;
+    this.run = null;
+    if (run.offset !== run.text.data.length) {
+      throw claimMismatch(
+        `text ${JSON.stringify(run.text.data.slice(0, run.offset))}`,
+        `text ${JSON.stringify(run.text.data)}`
+      );
+    }
+    let ref = run.end;
+    for (let k = run.items.length - 1; k >= 0; k--) {
+      const item = run.items[k];
+      if (item.node !== null) {
+        this.parent.insertBefore(item.node, ref);
+        ref = item.node;
+        continue;
+      }
+      const piece = item.offset > 0 ? run.text.splitText(item.offset) : run.text;
+      item.use(piece);
+      ref = piece;
+    }
+  }
+}
+
+function claimMismatch(expected, served) {
+  const found = typeof served === 'string' ? served : describe(served);
+  return new Error(`claim: expected ${expected}, the server has ${found}`);
+}
+
+function describe(node) {
+  if (!node) return 'nothing';
+  if (node.nodeType === Node.TEXT_NODE) return `text ${JSON.stringify(node.data)}`;
+  if (node.nodeType === Node.COMMENT_NODE) return `comment ${JSON.stringify(node.data)}`;
+  return `<${node.localName}> (${node.namespaceURI})`;
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────────
 
@@ -1568,169 +1712,6 @@ function skipSubtree(ir, cursor, count) {
   }
 }
 
-/** Split a merged-text claim once every slot in the run has its value: walk the items in
- * document order, statics advancing the offset, each slot cutting its own node out of the
- * live text and taking its value. The same split whatever order the values arrived in.
- * `null` while a value is still outstanding. SSR text equals the values by construction
- * (same fold), so each cut lands exactly. */
-function resolvePendingRun(run) {
-  if (run.done) return run.done;
-  for (const item of run.queue) {
-    if (item.type === 'slot' && !run.values.has(item.slot)) return null;
-  }
-  const nodes = new Map();
-  let node = run.node;
-  let offset = run.offset;
-  for (const item of run.queue) {
-    if (item.type === 'static') {
-      offset += item.text.length;
-      continue;
-    }
-    const value = run.values.get(item.slot);
-    if (offset > 0) {
-      node = node.splitText(offset);
-      offset = 0;
-    }
-    const own = node;
-    if (value.length < node.data.length) node = node.splitText(value.length);
-    own.textContent = value;
-    nodes.set(item.slot, own);
-  }
-  run.done = nodes;
-  return nodes;
-}
-
-/** The **claim plan**: since `mount` returns the whole self-contained stream up front,
- * scan it before applying to compute every region's live-DOM extent — how many pristine
- * SSR siblings its rows span — so the claim can skip past a region and keep claiming.
- * Regions surface two ways: a fragment mounted directly at its template anchor (`@if`
- * and rendered-embeds — `mount-fragment` at the anchor itself), and `move-fragment
- * { after }` chains identifying which row anchors belong to which region head (`@for`).
- * A row's span is its template's top-level node count, where a **nested** top-level
- * region contributes its own recursive extent. Bind-slot commands are attributed to
- * the fragment instance whose mount preceded them (exactly how `apply` resolves them
- * against `scratch`), which maps each instance's anchor slots to anchor node ids.
- *
- * Returns `{ root, rows }`: `root` keys slot id → extent for the root template's
- * anchors; `rows` keys fragment anchor node id → (slot id → extent) for the anchors
- * inside that fragment instance's rows, consumed when the fragment is adopted. */
-function planRegions(commands, fold) {
-  // Templates named by this stream, falling back to ones already registered in the
-  // fold — content-addressing means a template another live's stream carried is
-  // not re-announced here.
-  const templates = [];
-  const templateOf = (tid) => templates[tid] ?? fold?.templates[tid]?.nodes ?? [];
-  const rootBinds = new Map(); // root-scope slot id → node id
-  let segmentBinds = rootBinds; // binds resolve against the most recent scratch refresh
-  const instanceBinds = new Map(); // fragment anchor node id → Map(slot id → node id)
-  const anchorTemplate = new Map(); // fragment anchor node id → template id
-  const rowsOf = new Map(); // region head node id → [row anchor node id, …]
-  const headOfTail = new Map(); // row anchor node id → its region head node id
-  for (const c of commands) {
-    switch (c.tag) {
-      case 'replace-template':
-        templates[c.val.templateId] = c.val.nodes;  // planning walks nodes only
-        break;
-      case 'bind-slot':
-        segmentBinds.set(c.val.slot, c.val.node);
-        break;
-      case 'mount-fragment':
-      case 'replace-fragment': {
-        anchorTemplate.set(c.val.anchor, c.val.template);
-        segmentBinds = new Map();
-        instanceBinds.set(c.val.anchor, segmentBinds);
-        break;
-      }
-      case 'move-fragment': {
-        const after = c.val.after;
-        const head = headOfTail.get(after) ?? after;
-        if (!rowsOf.has(head)) rowsOf.set(head, []);
-        rowsOf.get(head).push(c.val.anchor);
-        headOfTail.set(c.val.anchor, head);
-        break;
-      }
-    }
-  }
-
-  /** Pristine-SSR span of one mounted fragment instance's rows. */
-  const instanceSpan = (anchorNode, seen) => {
-    const tid = anchorTemplate.get(anchorNode);
-    if (tid === undefined) return 0;
-    return templateSpan(templateOf(tid), instanceBinds.get(anchorNode), seen);
-  };
-
-  /** Total extent of the region at `head`: a directly-mounted fragment's rows (`@if`)
-   * plus every row anchor chained after it (`@for`). Anchor comments themselves are
-   * spliced at claim time, so they contribute nothing to the pristine count. */
-  const extentOfRegion = (head, seen) => {
-    if (head === undefined || head === null || seen.has(head)) return 0;
-    seen.add(head);
-    let extent = instanceSpan(head, seen);
-    for (const rowAnchor of rowsOf.get(head) ?? []) extent += instanceSpan(rowAnchor, seen);
-    return extent;
-  };
-
-  /** How many live DOM nodes a template's top level produces when server-rendered.
-   * A top-level nested region counts as its own extent (via this instance's anchor
-   * binds). Known limit (fail loud, never silently misclaim): text at a row **edge**
-   * merges with a neighbouring row's text in SSR. */
-  const templateSpan = (ir, binds, seen) => {
-    const nodes = [];
-    const cursor = { i: 0 };
-    while (cursor.i < ir.length) {
-      const node = ir[cursor.i++];
-      if (node.tag === 'element') {
-        skipSubtree(ir, cursor, node.val.children);
-      } else if (node.tag === 'live') {
-        skipSubtree(ir, cursor, node.val.fallback);
-      }
-      nodes.push(node);
-    }
-    let span = 0;
-    let inTextRun = false; // SSR merges adjacent text into one node, as the claim reads it
-    for (const [index, node] of nodes.entries()) {
-      const isText = node.tag === 'text' || node.tag === 'text-slot';
-      if (isText && inTextRun) continue;
-      inTextRun = isText;
-      if (node.tag === 'anchor-slot') {
-        const anchorNode = binds?.get(node.val);
-        if (anchorNode === undefined) {
-          console.error(
-            'idyll runtime: nested region has no bound anchor — its extent is unknown'
-          );
-          continue;
-        }
-        span += extentOfRegion(anchorNode, seen);
-        continue; // the anchor comment itself does not exist in pristine SSR
-      }
-      if (
-        (node.tag === 'text' || node.tag === 'text-slot') &&
-        (index === 0 || index === nodes.length - 1)
-      ) {
-        console.error(
-          'idyll runtime: text at a row edge merges with neighbouring rows in SSR — wrap it in an element'
-        );
-      }
-      span += 1;
-    }
-    return span;
-  };
-
-  const root = new Map(); // root slot id → live-DOM node count of its region
-  for (const [slot, node] of rootBinds) {
-    root.set(slot, extentOfRegion(node, new Set()));
-  }
-  const rows = new Map(); // fragment anchor node id → (slot id → extent)
-  for (const [anchorNode, binds] of instanceBinds) {
-    const extents = new Map();
-    for (const [slot, node] of binds) {
-      extents.set(slot, extentOfRegion(node, new Set()));
-    }
-    rows.set(anchorNode, extents);
-  }
-  return { root, rows };
-}
-
 // ── Live: discovery and mounting ───────────────────────────────────────────────
 //
 // The page is content: the server rendered it, this runtime never re-renders it, and
@@ -1774,6 +1755,21 @@ const measures = new Set();
  * Distinct from [PLACES_WRAPPERS]: removing the last nine hundred rows of a list places no
  * wrapper and reflows everything after it. */
 const MOVES_LAYOUT = new Set([
+  'mount-fragment',
+  'replace-fragment',
+  'remove-fragment',
+  'detach-fragment',
+  'attach-fragment',
+  'move-fragment',
+]);
+
+/** The commands that shape the DOM. A claim settles these into one tree before placing
+ * it; every other command is an effect on the nodes placed. */
+const SHAPE_COMMANDS = new Set([
+  'replace-template',
+  'mount-root',
+  'bind-slot',
+  'set-text',
   'mount-fragment',
   'replace-fragment',
   'remove-fragment',
@@ -1968,7 +1964,6 @@ if (window.__IDYLL_DEV__) {
 export {
   Live,
   newFold,
-  planRegions,
   RULES,
   injectStyles,
   replaceStyles,
