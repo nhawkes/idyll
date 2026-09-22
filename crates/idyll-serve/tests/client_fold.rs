@@ -212,6 +212,24 @@ async fn mixed_run(ctx: Ctx<Setup, Never>) -> idyll::Result {
         .await?)
 }
 
+/// A region whose row has a text run between elements, with a sibling after the region.
+/// SSR merges the run into one text node, so the row spans three nodes, and the claim
+/// must skip exactly that many to reach the sibling.
+async fn row_text_run(ctx: Ctx<Setup, Never>) -> idyll::Result {
+    let show = ctx.mutable_signal(true);
+    let shown = show.read();
+    let label = ctx.mutable_signal("b".to_string());
+    let after = ctx.mutable_signal("after".to_string());
+    Ok(ctx
+        .render(live_view! {
+            div {
+                @if ($shown) { i { "x" } "a" $label "c" i { "y" } }
+                p { $after }
+            }
+        })
+        .await?)
+}
+
 fn npm() -> &'static str {
     if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
@@ -249,6 +267,7 @@ fn the_client_fold_converges_with_the_server_fold() {
         ("prose", mount_stream::<ProseMsg, _>(|ctx| prose(ctx, seeded_data())), false),
         ("plot", mount_stream::<PlotMsg, _>(|ctx| plot(ctx, seeded_data())), false),
         ("mixed-run", mount_stream::<Never, _>(mixed_run), false),
+        ("row-text-run", mount_stream::<Never, _>(row_text_run), false),
         // The driven stream: mount plus the teardown ops (detach, moves while
         // detached, re-attach) both folds must agree on — the region where every
         // divergence found by review has lived. Build-only: a post-interaction fold

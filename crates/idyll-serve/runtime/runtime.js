@@ -1601,7 +1601,11 @@ function planRegions(commands, fold) {
       nodes.push(node);
     }
     let span = 0;
+    let inTextRun = false; // SSR merges adjacent text into one node, as the claim reads it
     for (const [index, node] of nodes.entries()) {
+      const isText = node.tag === 'text' || node.tag === 'text-slot';
+      if (isText && inTextRun) continue;
+      inTextRun = isText;
       if (node.tag === 'anchor-slot') {
         const anchorNode = binds?.get(node.val);
         if (anchorNode === undefined) {
