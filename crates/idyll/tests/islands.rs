@@ -112,6 +112,17 @@ fn an_island_free_view_reports_no_islands() {
 }
 
 #[test]
+fn an_optional_attribute_is_written_only_when_present() {
+    let title: Option<&str> = Some("here");
+    let fill: Option<&str> = None;
+    let body = view! {
+        p title[title] lang[fill] hidden[true] draggable[false] { "x" }
+    };
+    let html = view_html(&body, []);
+    assert!(html.contains("<p title=\"here\" hidden>x</p>"), "{}", html.as_str());
+}
+
+#[test]
 fn unescaped_markup_is_written_out_verbatim() {
     let markup = String::from("<b>bold</b> & <i>it</i>");
     let body = view! {

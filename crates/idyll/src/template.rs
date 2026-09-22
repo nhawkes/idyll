@@ -32,6 +32,38 @@ impl TplAttr {
     }
 }
 
+/// What `name[expr]` accepts: an attribute that may be absent. A `bool` is HTML's
+/// boolean attribute — present and empty, or absent — and moves the element's property
+/// with it (`checked`, `disabled`); an `Option` is a value written when there is one, and
+/// no attribute at all when there is not.
+pub trait OptionalAttr {
+    /// The attribute as the server writes it: its value, or `None` for no attribute.
+    fn value(self) -> Option<Cow<'static, str>>;
+    /// The attribute as a live binding sets it on `node_id`.
+    fn op(self, node_id: crate::driver::NodeId, name: &'static str) -> crate::driver::DomOp;
+}
+
+impl OptionalAttr for bool {
+    fn value(self) -> Option<Cow<'static, str>> {
+        self.then_some(Cow::Borrowed(""))
+    }
+    fn op(self, node_id: crate::driver::NodeId, name: &'static str) -> crate::driver::DomOp {
+        crate::driver::DomOp::SetBoolAttr { node_id, name, value: self }
+    }
+}
+
+impl<T: std::fmt::Display> OptionalAttr for Option<T> {
+    fn value(self) -> Option<Cow<'static, str>> {
+        self.map(|value| Cow::Owned(value.to_string()))
+    }
+    fn op(self, node_id: crate::driver::NodeId, name: &'static str) -> crate::driver::DomOp {
+        match self {
+            Some(value) => crate::driver::DomOp::SetAttr { node_id, name, value: value.to_string() },
+            None => crate::driver::DomOp::RemoveAttr { node_id, name },
+        }
+    }
+}
+
 /// One style rule a template's elements reference by class (`css=[…]` in `live_view!`).
 ///
 /// `name` is the class — its identity is the *declaration site* (file + `css!` name +

@@ -276,6 +276,25 @@ async fn unescaped(ctx: Ctx<Setup, Never>) -> idyll::Result {
         .await?)
 }
 
+struct Flip;
+
+/// Attributes that may be absent, driven between present and absent: an `Option` value
+/// and a `bool`.
+async fn optional_attrs(ctx: Ctx<Setup, Flip>) -> idyll::Result {
+    let title = ctx.mutable_signal(Some("shown".to_string()));
+    let hidden = ctx.mutable_signal(false);
+    let mut ctx = ctx
+        .render(live_view! {
+            p title[$title] hidden[$hidden] { "text" }
+        })
+        .await?;
+    loop {
+        let (Flip, turn) = ctx.recv().await?;
+        title.update(&turn, |t| *t = if t.is_some() { None } else { Some("back".to_string()) });
+        hidden.update(&turn, |h| *h = !*h);
+    }
+}
+
 struct Hide;
 
 /// A kept branch hidden before the stream ends: the server never painted it, so a claim
@@ -405,6 +424,9 @@ fn the_client_fold_converges_with_the_server_fold() {
         ("nested-rows", mount_stream::<NestedMsg, _>(nested_rows), false),
         ("text-rows", mount_stream::<Never, _>(text_rows), false),
         ("unescaped", mount_stream::<Never, _>(unescaped), false),
+        ("optional-attrs", mount_stream::<Flip, _>(optional_attrs), false),
+        ("optional-attrs-driven", driven_stream(optional_attrs, [Flip, Flip]), true),
+        ("optional-attrs-absent", driven_stream(optional_attrs, [Flip]), true),
         ("empty-between", mount_stream::<Never, _>(empty_between), false),
         ("hidden-kept", driven_stream(hidden_kept, [Hide]), false),
     ] {

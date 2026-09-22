@@ -753,17 +753,15 @@ impl<M: 'static> LiveView<M> {
         })
     }
 
-    pub fn bool_attr(
+    /// An attribute that may be absent (`name[…]` in `live_view!`): a `bool` or an
+    /// `Option` — see [`crate::template::OptionalAttr`].
+    pub fn optional_attr<A: crate::template::OptionalAttr>(
         self,
         slot: u32,
         name: &'static str,
-        f: impl Fn(&Cx) -> bool + 'static,
+        f: impl Fn(&Cx) -> A + 'static,
     ) -> Self {
-        self.one_binding(slot, move |cx, node_id| crate::driver::DomOp::SetBoolAttr {
-            node_id,
-            name,
-            value: f(cx),
-        })
+        self.one_binding(slot, move |cx, node_id| f(cx).op(node_id, name))
     }
 
     fn one_binding(
@@ -1109,7 +1107,7 @@ mod tests {
         let view: LiveView<()> =
             LiveView::new(vec![el("button", Some(0), 1), TplNode::TextSlot(SlotId(1))])
                 .attr(0, "title", move |_cx| title.peek().clone())
-                .bool_attr(0, "disabled", move |_cx| *disabled.peek())
+                .optional_attr(0, "disabled", move |_cx| *disabled.peek())
                 .text(1, move |_cx| label.peek().clone());
 
         assert_eq!(

@@ -151,7 +151,8 @@ fn parse_css_entries(raw: TokenStream2) -> Result<Vec<CssEntryAst>> {
 enum Attr {
     /// `name=(expr)` — evaluates expr as a string attribute value
     Value { name: Ident, expr: Expr },
-    /// `name[expr]` — boolean/optional attribute
+    /// `name[expr]` — an attribute that may be absent: a `bool` or an `Option`
+    /// (`idyll::template::OptionalAttr`)
     Bool { name: Ident, expr: Expr },
     /// `style:prop=(expr)` / `style:(Handle)=(expr)` — one CSS declaration, written
     /// via `setProperty` (no
@@ -2124,11 +2125,7 @@ impl Codegen {
                         }
                     },
                     LeafKind::BoolAttr(name) => quote! {
-                        ::idyll::driver::DomOp::SetBoolAttr {
-                            node_id: #node,
-                            name: #name,
-                            value: (#expr) as bool,
-                        }
+                        ::idyll::template::OptionalAttr::op(#expr, #node, #name)
                     },
                 };
                 quote! { #k => #op }
@@ -2998,14 +2995,16 @@ fn view_element(el: &Element) -> Result<TokenStream2> {
                 });
             }
             Attr::Bool { name, expr } => {
-                // HTML boolean semantics, as the fold writes them: present-and-empty
-                // when true, absent when false.
+                // An attribute that may be absent: a `bool` or an `Option`
+                // (`OptionalAttr`).
                 let name = attr_html_name(name);
                 attr_stmts.push(quote! {
-                    if (#expr) as bool {
+                    if let ::core::option::Option::Some(__value) =
+                        ::idyll::template::OptionalAttr::value(#expr)
+                    {
                         __attrs.push(::idyll::template::TplAttr {
                             name: ::std::borrow::Cow::Borrowed(#name),
-                            value: ::std::borrow::Cow::Borrowed(""),
+                            value: __value,
                         });
                     }
                 });
