@@ -862,7 +862,6 @@ class Live {
     if (moved) scheduleRemeasure();
   }
 
-  /** Fold one typed command (a jco variant: `{ tag, val }`) into the document. */
   /** The stream introduces every consumed id before use (the pinned contract in
    * `examples/todo/app/tests/command_stream.rs`). On the build path an unknown id is
    * an emitter bug, and folding past it would paint a wrong document — so the fold
@@ -878,6 +877,7 @@ class Live {
     return node;
   }
 
+  /** Fold one typed command (a jco variant: `{ tag, val }`) into the document. */
   apply(c) {
     const v = c.val;
     switch (c.tag) {
@@ -1159,23 +1159,6 @@ class Live {
     return anchor;
   }
 
-  /**
-   * The namespace rows mounted at `anchor` must be built in.
-   *
-   * Normally the anchor recorded it when it was made. An anchor minted by
-   * [ensureAnchor] never went through a walk, so it has none — fall back to where it
-   * currently sits, which is right whenever it sits anywhere at all.
-   */
-  /**
-   * Build template `templateId`'s nodes for a mount at `anchor`.
-   *
-   * Two sources, and both are needed. The template says the namespace it was *written*
-   * in — the only way to know for a fragment, whose row is built before its anchor is
-   * positioned. The anchor says the namespace it is *mounted* into — the only way to
-   * know for a template written in HTML and mounted inside an `<svg>`, which the
-   * compiler cannot see from the template alone. Neither subsumes the other, so a
-   * declared SVG template is SVG anywhere, and anything else inherits its position.
-   */
   /** The registered template a structural command names — templates travel in-band
    * before anything instantiates them (stream contract 1), so a miss is an emitter
    * bug and an empty paint would be the silent-misclaim outcome this fold refuses. */
@@ -1187,12 +1170,29 @@ class Live {
     return tpl;
   }
 
+  /**
+   * Build template `templateId`'s nodes for a mount at `anchor`.
+   *
+   * Two sources, and both are needed. The template says the namespace it was *written*
+   * in — the only way to know for a fragment, whose row is built before its anchor is
+   * positioned. The anchor says the namespace it is *mounted* into — the only way to
+   * know for a template written in HTML and mounted inside an `<svg>`, which the
+   * compiler cannot see from the template alone. Neither subsumes the other, so a
+   * declared SVG template is SVG anywhere, and anything else inherits its position.
+   */
   buildTemplate(templateId, anchor) {
     const tpl = this.mustTemplate(templateId, 'build-template');
     const ns = tpl.svg ? SVG_NS : this.nsAt(anchor);
     return this.buildInto(tpl.nodes, ns);
   }
 
+  /**
+   * The namespace rows mounted at `anchor` must be built in.
+   *
+   * Normally the anchor recorded it when it was made. An anchor minted by
+   * [ensureAnchor] never went through a walk, so it has none — fall back to where it
+   * currently sits, which is right whenever it sits anywhere at all.
+   */
   nsAt(anchor) {
     const recorded = this.fold.nsOf.get(anchor);
     return recorded !== undefined ? recorded : childNsOf(anchor.parentNode);
