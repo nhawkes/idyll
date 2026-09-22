@@ -579,8 +579,14 @@ function newFold() {
     templates: [],
     /** node id (u32) → live DOM node — one id space for the whole guest runtime. */
     nodes: new Map(),
-    /** Fragment anchor id → { nodes: Node[], detached: bool }. */
+    /** Fragment anchor id → { nodes: its own top-level Node[], parked: the
+     * `DocumentFragment` holding it while detached, else `null` }. */
     fragments: new Map(),
+    /** The rows placed after each region head (`move-fragment`), in document order:
+     * `byHead` head id → { first, last } row ids, `rowOf` row id → { head, prev, next }. */
+    regions: { byHead: new Map(), rowOf: new Map() },
+    /** Anchor node → its node id, to go from a fragment's nodes to what they own. */
+    anchorIds: new WeakMap(),
     /** template ids stashed for fragments mounted while their anchor was unpositioned. */
     pendingAdopt: new Map(),
     /**
@@ -905,6 +911,7 @@ class Live {
         }
         if (node.__pendingText) node.run.queue.find((item) => item.slot === v.slot).node = v.node;
         this.fold.nodes.set(v.node, node);
+        if (node.nodeType === Node.COMMENT_NODE) this.fold.anchorIds.set(node, v.node);
         break;
       }
       case 'set-text': {
@@ -968,28 +975,20 @@ class Live {
         break;
       case 'remove-fragment': {
         const anchor = this.mustNode(c.val, 'remove-fragment');
-        this.removeFragmentNodes(c.val);
-        anchor?.parentNode?.removeChild(anchor);
+        this.dropFragment(c.val);
+        this.unlinkRow(c.val);
+        anchor.remove();
         this.fold.nodes.delete(c.val);
         this.fold.fragments.delete(c.val);
         break;
       }
-      case 'detach-fragment': {
+      case 'detach-fragment':
         this.mustNode(c.val, 'detach-fragment');
-        const f = this.fold.fragments.get(c.val);
-        if (!f || f.detached) break;
-        for (const n of f.nodes) n.parentNode?.removeChild(n);
-        f.detached = true;
+        this.parkFragment(c.val);
         break;
-      }
-      case 'attach-fragment': {
-        const anchor = this.mustNode(c.val, 'attach-fragment');
-        const f = this.fold.fragments.get(c.val);
-        if (!anchor || !f || !f.detached) break;
-        insertAfter(anchor, f.nodes);
-        f.detached = false;
+      case 'attach-fragment':
+        this.unparkFragment(c.val);
         break;
-      }
       case 'move-fragment':
         this.moveFragment(v.anchor, v.after);
         break;
@@ -1082,6 +1081,7 @@ class Live {
           }
           this.fold.nodes.delete(id);
           this.fold.fragments.delete(id);
+          this.forgetRegion(id);
         }
         break;
       default:
@@ -1154,6 +1154,7 @@ class Live {
     if (!anchor) {
       anchor = document.createComment('idyll');
       this.fold.nodes.set(id, anchor);
+      this.fold.anchorIds.set(anchor, id);
     }
     return anchor;
   }
@@ -1197,6 +1198,13 @@ class Live {
     return recorded !== undefined ? recorded : childNsOf(anchor.parentNode);
   }
 
+  // A fragment's nodes sit *beside* its anchor, and any of them may be an anchor in turn,
+  // with its own fragment and rows beside it. So what an anchor owns is always one
+  // contiguous run of siblings: the anchor, its fragment's nodes with everything their
+  // anchors own, then its rows in order, each with everything it owns. Every structural
+  // operation moves, parks or drops exactly that run, found from its two ends — never by
+  // searching the page.
+
   mountFragment(anchorId, templateId, replace) {
     // Claim mode, first fill: the server already rendered these nodes — adopt, don't
     // build. An anchor still floating (no position yet) gets its rows at `move-fragment`.
@@ -1207,41 +1215,64 @@ class Live {
       this.ensureAnchor(anchorId);
       return;
     }
-    if (replace) this.removeFragmentNodes(anchorId);
+    if (replace) this.dropFragment(anchorId);
     const anchor = this.ensureAnchor(anchorId);
     if (!anchor.parentNode) this.root.appendChild(anchor); // floating: parked until moved
     const kids = this.buildTemplate(templateId, anchor);
     insertAfter(anchor, kids);
-    this.fold.fragments.set(anchorId, { nodes: kids, detached: false });
+    this.fold.fragments.set(anchorId, { nodes: kids, parked: null });
   }
 
-  removeFragmentNodes(anchorId) {
+  /** Remove the fragment mounted at `anchorId` and everything its anchors own. The
+   * anchor, and any rows after it, stay. */
+  dropFragment(anchorId) {
     const f = this.fold.fragments.get(anchorId);
     if (!f) return;
-    // A nested fragment (a child component, `@for`, or `@if`) splices its own nodes *beside*
-    // its anchor (`insertAfter`), so when that anchor is one of our top-level nodes the nested
-    // DOM is a sibling, not a descendant — removing our nodes leaves it orphaned. Tear those
-    // down first. (An anchor nested under one of our elements goes with that element, so it is
-    // not handled here.)
-    for (const [childId, cf] of this.fold.fragments) {
-      if (childId === anchorId || cf.detached) continue;
-      const childAnchor = this.fold.nodes.get(childId);
-      if (childAnchor && f.nodes.includes(childAnchor)) this.removeFragmentNodes(childId);
+    if (f.parked === null && f.nodes.length > 0) {
+      for (const n of siblingsThrough(f.nodes[0], this.ownEnd(anchorId))) n.remove();
     }
-    for (const n of f.nodes) n.parentNode?.removeChild(n);
-    f.detached = true;
+    f.parked = null;
+    f.nodes = [];
   }
 
+  /** Take the fragment at `anchorId` out of the document into a `DocumentFragment`, where
+   * it keeps its structure: rows inside it can still move while it is away. */
+  parkFragment(anchorId) {
+    const f = this.fold.fragments.get(anchorId);
+    if (!f || f.parked !== null) return;
+    const parked = document.createDocumentFragment();
+    if (f.nodes.length > 0) parked.append(...siblingsThrough(f.nodes[0], this.ownEnd(anchorId)));
+    f.parked = parked;
+  }
+
+  unparkFragment(anchorId) {
+    const f = this.fold.fragments.get(anchorId);
+    if (!f || f.parked === null) return;
+    const anchor = this.mustNode(anchorId, 'attach-fragment');
+    anchor.parentNode.insertBefore(f.parked, anchor.nextSibling);
+    f.parked = null;
+  }
+
+  /** Place row `anchorId` (with everything it owns) directly after what `afterId` itself
+   * owns — after a region's head means first in that region. */
   moveFragment(anchorId, afterId) {
     const anchor = this.ensureAnchor(anchorId);
     // The after-anchor is a reference, never an introduction (contract 3).
     this.mustNode(afterId, 'move-fragment.after');
-    const tail = this.fragmentTail(afterId);
-    if (tail?.parentNode) {
-      tail.parentNode.insertBefore(anchor, tail.nextSibling);
-      const f = this.fold.fragments.get(anchorId);
-      if (f && !f.detached) insertAfter(anchor, f.nodes);
-    }
+    const regions = this.fold.regions;
+    const head = regions.rowOf.get(afterId)?.head ?? afterId;
+    this.unlinkRow(anchorId);
+    const tail = this.ownEnd(afterId);
+    if (tail.parentNode) insertAfter(tail, siblingsThrough(anchor, this.ownEnd(anchorId)));
+    const region = regions.byHead.get(head) ?? { first: null, last: null };
+    regions.byHead.set(head, region);
+    const prev = afterId === head ? null : afterId;
+    const next = prev === null ? region.first : regions.rowOf.get(prev).next;
+    regions.rowOf.set(anchorId, { head, prev, next });
+    if (prev === null) region.first = anchorId;
+    else regions.rowOf.get(prev).next = anchorId;
+    if (next === null) region.last = anchorId;
+    else regions.rowOf.get(next).prev = anchorId;
     // Now positioned: adopt any rows that were waiting on a floating anchor.
     const pending = this.fold.pendingAdopt.get(anchorId);
     if (pending !== undefined && this.hydrating) {
@@ -1250,11 +1281,48 @@ class Live {
     }
   }
 
-  /** The last live node of a fragment (or the anchor itself when it has no rows). */
-  fragmentTail(anchorId) {
+  /** A freed id: out of its region if it was a row, and its rows' links gone if it was a
+   * head. */
+  forgetRegion(anchorId) {
+    const regions = this.fold.regions;
+    this.unlinkRow(anchorId);
+    const region = regions.byHead.get(anchorId);
+    if (!region) return;
+    for (let row = region.first; row !== null; ) {
+      const next = regions.rowOf.get(row).next;
+      regions.rowOf.delete(row);
+      row = next;
+    }
+    regions.byHead.delete(anchorId);
+  }
+
+  unlinkRow(anchorId) {
+    const regions = this.fold.regions;
+    const row = regions.rowOf.get(anchorId);
+    if (!row) return;
+    const region = regions.byHead.get(row.head);
+    if (row.prev === null) region.first = row.next;
+    else regions.rowOf.get(row.prev).next = row.next;
+    if (row.next === null) region.last = row.prev;
+    else regions.rowOf.get(row.next).prev = row.prev;
+    regions.rowOf.delete(anchorId);
+  }
+
+  /** The last node of what `anchorId` itself owns: its fragment's nodes, through
+   * whatever their own anchors own. Its rows come after this. */
+  ownEnd(anchorId) {
     const f = this.fold.fragments.get(anchorId);
-    if (f && !f.detached && f.nodes.length > 0) return f.nodes[f.nodes.length - 1];
+    if (f && f.parked === null && f.nodes.length > 0) return this.fullEnd(f.nodes[f.nodes.length - 1]);
     return this.fold.nodes.get(anchorId);
+  }
+
+  /** The last node `node` owns: itself, or for an anchor, the end of its last row, or of
+   * its own fragment when it has no rows. */
+  fullEnd(node) {
+    const id = this.fold.anchorIds.get(node);
+    if (id === undefined) return node;
+    const last = this.fold.regions.byHead.get(id)?.last ?? null;
+    return last === null ? this.ownEnd(id) : this.ownEnd(last);
   }
 
   // ── Build mode: materialize DOM straight from the IR ────────────────────────
@@ -1436,7 +1504,7 @@ class Live {
     const end = this.claimChildren(ir, cursor, ir.length, anchor.parentNode, first, extents);
     const adopted = [];
     for (let n = first; n && n !== end; n = n.nextSibling) adopted.push(n);
-    this.fold.fragments.set(anchorId, { nodes: adopted, detached: false });
+    this.fold.fragments.set(anchorId, { nodes: adopted, parked: null });
   }
 }
 
@@ -1457,6 +1525,16 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function childNsOf(parent) {
   if (!parent || parent.namespaceURI !== SVG_NS) return undefined;
   return parent.tagName === 'foreignObject' ? undefined : SVG_NS;
+}
+
+/** `first` and each following sibling up to and including `last`. */
+function siblingsThrough(first, last) {
+  const run = [first];
+  for (let n = first; n !== last; ) {
+    n = n.nextSibling;
+    run.push(n);
+  }
+  return run;
 }
 
 function insertAfter(anchor, list) {

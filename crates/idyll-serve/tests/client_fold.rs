@@ -230,26 +230,68 @@ async fn row_text_run(ctx: Ctx<Setup, Never>) -> idyll::Result {
         .await?)
 }
 
+enum NestedMsg {
+    Reverse,
+    ToggleInner,
+    ToggleOuter,
+    Shrink,
+}
+
+/// Rows whose top level holds a region of their own, inside a kept branch: the region's
+/// nodes are siblings of the row's, so moving, detaching or removing a row must carry
+/// them along.
+async fn nested_rows(ctx: Ctx<Setup, NestedMsg>) -> idyll::Result {
+    let order = ctx.mutable_signal(vec![1u32, 2, 3]);
+    let inner = ctx.mutable_signal(true);
+    let outer = ctx.mutable_signal(true);
+    let mut ctx = ctx
+        .render(live_view! {
+            div {
+                @if[keep] ($outer) {
+                    @for n in $order [key = *n] {
+                        @if ($inner) { i { $n } }
+                        b { "|" }
+                    }
+                }
+                p { "end" }
+            }
+        })
+        .await?;
+    loop {
+        let (msg, turn) = ctx.recv().await?;
+        match msg {
+            NestedMsg::Reverse => order.update(&turn, |v| v.reverse()),
+            NestedMsg::ToggleInner => inner.update(&turn, |v| *v = !*v),
+            NestedMsg::ToggleOuter => outer.update(&turn, |v| *v = !*v),
+            NestedMsg::Shrink => order.update(&turn, |v| {
+                v.pop();
+            }),
+        }
+    }
+}
+
 fn npm() -> &'static str {
     if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
 
-/// The prose live driven through its gauntlet after mounting: keep-branch detach,
-/// keyed reverse while detached, re-attach — the full stream, teardown included.
-fn prose_driven_stream() -> Vec<DomCommand> {
+/// A live mounted and then driven by `messages`: the full stream, teardown included.
+fn driven_stream<M, Fut>(
+    root: impl FnOnce(Ctx<Setup, M>) -> Fut + 'static,
+    messages: impl IntoIterator<Item = M>,
+) -> Vec<DomCommand>
+where
+    M: 'static,
+    Fut: std::future::Future<Output = idyll::Result> + 'static,
+{
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
-    let ctx = Ctx::<Setup, ProseMsg>::for_mount(&rt, None);
+    let ctx = Ctx::<Setup, M>::for_mount(&rt, None);
     let sender = ctx.inbox_sender();
-    rt.spawn(spawn_live(
-        |ctx| prose(ctx, seeded_data()),
-        ctx,
-        idyll::component::report_to_log,
-    ));
+    rt.spawn(spawn_live(root, ctx, idyll::component::report_to_log));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
-    for msg in [ProseMsg::Toggle, ProseMsg::Reverse, ProseMsg::Toggle] {
+    for msg in messages {
         sender.send(msg);
         rt.run_to_quiescence();
         rt.flush(&mut driver);
@@ -272,7 +314,31 @@ fn the_client_fold_converges_with_the_server_fold() {
         // detached, re-attach) both folds must agree on — the region where every
         // divergence found by review has lived. Build-only: a post-interaction fold
         // is not an SSR document, so there is nothing to claim.
-        ("prose-driven", prose_driven_stream(), true),
+        (
+            "prose-driven",
+            driven_stream(
+                |ctx| prose(ctx, seeded_data()),
+                [ProseMsg::Toggle, ProseMsg::Reverse, ProseMsg::Toggle],
+            ),
+            true,
+        ),
+        (
+            "nested-rows-driven",
+            driven_stream(
+                nested_rows,
+                [
+                    NestedMsg::Reverse,
+                    NestedMsg::ToggleInner,
+                    NestedMsg::ToggleInner,
+                    NestedMsg::ToggleOuter,
+                    NestedMsg::Reverse,
+                    NestedMsg::ToggleOuter,
+                    NestedMsg::Shrink,
+                ],
+            ),
+            true,
+        ),
+        ("nested-rows", mount_stream::<NestedMsg, _>(nested_rows), false),
     ] {
         let html = fold_html(&commands);
         let fixture = json!({
