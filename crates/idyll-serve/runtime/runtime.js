@@ -110,8 +110,9 @@ function recoverSkew(what, err) {
 
 // ── Event delegation (installed immediately; queues until live) ──────────────────
 
-/** DOM node → (event type → { live, handler }). The delegated listeners consult this. */
-const listeners = new Map();
+/** DOM node → (event type → { live, handler }). The delegated listeners consult this. Weak,
+ * so a registration dies with its node even if the stream never frees it. */
+const listeners = new WeakMap();
 let live = false;
 const queue = [];
 const DELEGATED = ['click', 'input', 'change', 'keydown', 'keyup', 'submit', 'blur', 'focus'];
