@@ -1,12 +1,13 @@
 [package]
-name = "idyll-schema"
+name = "idyll-wit"
 version = "0.1.0"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
+[features]
+host = ["dep:wasmtime"]
+
 [dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
-sha2 = { workspace = true }
+wasmtime = { version = "46", features = ["component-model", "runtime"], optional = true }

@@ -2,7 +2,7 @@
 name = "idyll-macros"
 version = "0.1.0"
 edition = "2021"
-description = "Procedural macros for the Idyll UI framework (view! and component!)"
+description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
@@ -15,6 +15,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits", "visit"] }
 # The client macros read the published schema.json at expansion time (fragment!/query!/
 # mutation! validate selections and generate projections from it).
-idyll-schema = { path = "../idyll-schema" }
-idyll-styles-parse = { path = "../idyll-styles-parse" }
+idyll-schema = { version = "0.1.0", path = "../idyll-schema" }
+idyll-wit = { version = "0.1.0", path = "../idyll-wit" }
+idyll-styles-parse = { version = "0.1.0", path = "../idyll-styles-parse" }
 serde_json = { workspace = true }

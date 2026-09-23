@@ -2,19 +2,19 @@
 name = "idyll-styles"
 version = "0.1.0"
 edition = "2021"
-description = "Typed, compile-checked CSS for idyll — StyleX's model with declaration-site class identity"
+description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
-idyll = { path = "../idyll" }
-idyll-macros = { path = "../idyll-macros" }
+idyll = { version = "0.1.0", path = "../idyll" }
+idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 # The source extractor — native-only, like the style values themselves.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-idyll-styles-parse = { path = "../idyll-styles-parse" }
+idyll-styles-parse = { version = "0.1.0", path = "../idyll-styles-parse" }
 syn = { version = "2", features = ["full"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 anyhow = { workspace = true }

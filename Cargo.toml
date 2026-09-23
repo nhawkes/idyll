@@ -9,6 +9,7 @@ members = [
     "crates/idyll-serve",
     "crates/idyll-styles",
     "crates/idyll-styles-parse",
+    "crates/idyll-wit",
     "examples/todo/app",
     "examples/todo/server",
     "examples/todo-islands/app",

@@ -5489,7 +5489,7 @@ impl Parse for GuestInput {
 }
 
 /// The `idyll:ssr` world, embedded so apps never carry a path to the WIT.
-const SSR_WIT: &str = include_str!("../../idyll-host/wit/ssr.wit");
+const SSR_WIT: &str = idyll_wit::SSR;
 
 /// `guest! { seed: PageSeed, page: page(seed), head: head(seed), live: { … } }`
 ///

@@ -3,8 +3,9 @@ name = "idyll-route"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Typed routes: a URL is a projection of a typed route value, and one #[derive(Route)] spec emits both directions (parse and url) so they cannot drift."
+description = "Vibe coded web framework"
+repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
-idyll-macros = { path = "../idyll-macros" }
+idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
 percent-encoding = "2"

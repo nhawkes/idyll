@@ -2,14 +2,14 @@
 name = "idyll-data"
 version = "0.1.0"
 edition = "2021"
-description = "Signal-backed normalized data cache for Idyll"
+description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
-idyll = { path = "../idyll" }
-idyll-macros = { path = "../idyll-macros" }
-idyll-schema = { path = "../idyll-schema" }
+idyll = { version = "0.1.0", path = "../idyll" }
+idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
+idyll-schema = { version = "0.1.0", path = "../idyll-schema" }
 derive-where = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

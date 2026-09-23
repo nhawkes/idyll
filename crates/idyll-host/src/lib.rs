@@ -14,7 +14,7 @@
 //!
 //! ## The contract is WIT, not a hand-rolled ABI
 //!
-//! The membrane talks to the guest through a **component-model interface** ([`wit/ssr.wit`]),
+//! The membrane talks to the guest through a **component-model interface** (`idyll-wit`'s `ssr.wit`),
 //! not a bespoke `alloc`/`render`-over-`memory` handshake. The `world app` the guest
 //! exports is its **mount table**: `mount` returns a `mount-result`, and `flush` drains
 //! the rest of the paint as a **command stream** (the host calls `flush` until `done`):
@@ -25,7 +25,7 @@
 //!     -> result<mount-result, string>;
 //! ```
 //!
-//! `wasmtime::component::bindgen!` generates the typed host binding; the guest uses
+//! `idyll-wit` generates the typed host binding with `wasmtime::component::bindgen!`; the guest uses
 //! `wit_bindgen`. The canonical ABI moves the seed in and a stream of typed
 //! [`idyll::DomCommand`]s out — no `unsafe`, no pointer packing, no manual `memory` reads.
 //! Emitting **commands** rather than one HTML string is deliberate: the **host** folds
@@ -57,13 +57,10 @@ use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store, Trap};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-// The typed host binding, generated from the same WIT the guest is built against. The
-// world is the app's **live table** (the same artifact also runs in the browser via
-// jco); the membrane calls `mount` for each live's SSR paint.
-wasmtime::component::bindgen!({
-    world: "app",
-    path: "wit",
-});
+// The typed host binding, generated in `idyll-wit` from the same WIT the guest is built
+// against. The world is the app's **live table** (the same artifact also runs in the browser
+// via jco); the membrane calls `mount` for each live's SSR paint.
+use idyll_wit::*;
 
 /// The outcome of a single live mount.
 ///

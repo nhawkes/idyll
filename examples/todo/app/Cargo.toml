@@ -1,5 +1,6 @@
 [package]
 name = "todo-app"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "The todo app's island table — islands, their fragments, and the route query they compose into. The server builds this crate to wasm on demand; the same artifact is mounted by the membrane (SSR paint) and the browser (claim)."

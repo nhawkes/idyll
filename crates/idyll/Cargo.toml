@@ -2,7 +2,7 @@
 name = "idyll"
 version = "0.1.0"
 edition = "2021"
-description = "A render-once, futures-first UI framework for Rust and WebAssembly"
+description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 keywords = ["wasm", "ui", "framework", "reactive", "webassembly"]
@@ -21,12 +21,12 @@ crate-type = ["rlib"]
 
 [dependencies]
 smallvec = "1"
-idyll-macros = { path = "../idyll-macros" }
+idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
 slotmap = "1"
 indexmap = "2"
 pin-project-lite = "0.2"
 serde = { workspace = true }
-idyll-schema = { path = "../idyll-schema" }
+idyll-schema = { version = "0.1.0", path = "../idyll-schema" }
 serde_json = { workspace = true, features = ["raw_value"] }
 type-map = "0.5.1"
 

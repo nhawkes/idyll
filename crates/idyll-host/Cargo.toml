@@ -2,7 +2,7 @@
 name = "idyll-host"
 version = "0.1.0"
 edition = "2021"
-description = "Server-side SSR render harness: seals the !Send idyll reactive core inside a per-render wasm instance"
+description = "Vibe coded web framework"
 license = "MIT"
 repository = "https://github.com/nhawkes/idyll"
 
@@ -13,5 +13,6 @@ anyhow = { workspace = true }
 thiserror = "2"
 # The membrane speaks idyll's own command vocabulary at its edge: `mount` streams
 # convert to `DomCommand` for the host's HTML fold.
-idyll = { path = "../idyll" }
+idyll = { version = "0.1.0", path = "../idyll" }
+idyll-wit = { version = "0.1.0", path = "../idyll-wit", features = ["host"] }
 
