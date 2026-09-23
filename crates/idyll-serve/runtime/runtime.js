@@ -1327,7 +1327,13 @@ class Live {
   }
 
   /** Remove the fragment mounted at `anchorId` and everything its anchors own. The
-   * anchor, and any rows after it, stay. */
+   * anchor, and any rows after it, stay.
+   *
+   * The run leaves the page as one piece, not node by node: an anchor inside it can still be
+   * named later in the same frame — a child's teardown lands after the ancestor that took it
+   * away (see `remove_fragment_guard`) — and it must find its siblings where the server fold's
+   * detached subtree keeps them, not scattered, and not a parentless anchor that a remount
+   * would put back on the page. */
   dropFragment(anchorId) {
     const f = this.fold.fragments.get(anchorId);
     if (!f) return;
@@ -1337,10 +1343,8 @@ class Live {
         : f.nodes.length > 0
           ? siblingsThrough(f.nodes[0], this.ownEnd(anchorId))
           : [];
-    for (const n of dropped) {
-      n.remove();
-      retireIslandsIn(n);
-    }
+    document.createDocumentFragment().append(...dropped);
+    for (const n of dropped) retireIslandsIn(n);
     f.parked = null;
     f.nodes = [];
   }

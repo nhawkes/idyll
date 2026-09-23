@@ -268,7 +268,7 @@ async fn unescaped(ctx: Ctx<Setup, Never>) -> idyll::Result {
             p { "a" @dangerouslyUnescapedHtml("b<i>c</i>d") "e" }
             svg { @dangerouslyUnescapedHtml(icon) }
             ul {
-                @for n in $order [key = *n] {
+                @for _n in $order [key = *_n] {
                     li { @dangerouslyUnescapedHtml("<b>row</b><!--note-->") }
                 }
             }
@@ -353,6 +353,43 @@ async fn nested_rows(ctx: Ctx<Setup, NestedMsg>) -> idyll::Result {
     }
 }
 
+struct Collapse;
+
+#[idyll::component]
+async fn Badge(ctx: Ctx<Setup, Never>, asking: idyll::Signal<bool>) -> idyll::Result {
+    ctx.render(live_view! {
+        @if ($asking) { span { "ask" } }
+        b { "button" }
+    })
+    .await
+}
+
+/// A branch whose top level holds a component, closed by one message that also changes
+/// what the component shows: the branch drops the component's nodes with its own, so the
+/// component's removal that follows finds them already gone.
+async fn nested_drop(ctx: Ctx<Setup, Collapse>) -> idyll::Result {
+    let zoomed = ctx.mutable_signal(true);
+    let asking = ctx.mutable_signal(true);
+    let asking_read = asking.read();
+    let mut ctx = ctx
+        .render(live_view! {
+            div {
+                @if ($zoomed) {
+                    Badge asking=(asking_read)
+                    i { "picture" }
+                } else {
+                    p { "grid" }
+                }
+            }
+        })
+        .await?;
+    loop {
+        let (Collapse, turn) = ctx.recv().await?;
+        zoomed.set(&turn, false);
+        asking.set(&turn, false);
+    }
+}
+
 fn npm() -> &'static str {
     if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
@@ -429,6 +466,7 @@ fn the_client_fold_converges_with_the_server_fold() {
         ("optional-attrs-absent", driven_stream(optional_attrs, [Flip]), true),
         ("empty-between", mount_stream::<Never, _>(empty_between), false),
         ("hidden-kept", driven_stream(hidden_kept, [Hide]), false),
+        ("nested-drop", driven_stream(nested_drop, [Collapse]), true),
     ] {
         let html = fold_html(&commands);
         let fixture = json!({
