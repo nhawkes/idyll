@@ -1636,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "idyll-styles"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "idyll",
@@ -1650,7 +1650,7 @@ dependencies = [
 
 [[package]]
 name = "idyll-styles-parse"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",

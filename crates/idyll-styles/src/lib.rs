@@ -176,7 +176,7 @@ pub mod props {
     }
 
     markers! {
-        Display, FlexDirection, AlignItems, AlignContent, JustifyItems, AlignSelf, JustifyContent, FlexWrap, Gap, ColumnGap,
+        Display, FlexDirection, AlignItems, AlignContent, JustifyItems, JustifySelf, AlignSelf, JustifyContent, FlexWrap, Gap, ColumnGap,
         GridTemplateColumns, GridTemplateRows, GridAutoFlow, GridAutoRows, GridAutoColumns,
         GridArea, GridColumn, GridRow,
         BorderTop, BorderRight,

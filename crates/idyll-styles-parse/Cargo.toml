@@ -1,6 +1,6 @@
 [package]
 name = "idyll-styles-parse"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"

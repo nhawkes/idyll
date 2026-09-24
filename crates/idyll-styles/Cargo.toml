@@ -1,6 +1,6 @@
 [package]
 name = "idyll-styles"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"
@@ -14,7 +14,7 @@ serde_json = { workspace = true }
 
 # The source extractor — native-only, like the style values themselves.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-idyll-styles-parse = { version = "0.1.0", path = "../idyll-styles-parse" }
+idyll-styles-parse = { version = "0.1.1", path = "../idyll-styles-parse" }
 syn = { version = "2", features = ["full"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 anyhow = { workspace = true }

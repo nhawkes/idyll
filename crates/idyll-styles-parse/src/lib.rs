@@ -184,6 +184,7 @@ pub const PROPERTIES: &[Property] = &[
     prop("align_items", "align-items", "AlignItems", Kind::Keyword(&["center", "flex-start", "flex-end", "stretch", "baseline"])),
     prop("align_content", "align-content", "AlignContent", Kind::Keyword(&["center", "flex-start", "flex-end", "stretch", "space-between", "space-around", "space-evenly"])),
     prop("justify_items", "justify-items", "JustifyItems", Kind::Keyword(&["center", "start", "end", "stretch"])),
+    prop("justify_self", "justify-self", "JustifySelf", Kind::Keyword(&["auto", "center", "start", "end", "stretch"])),
     prop("align_self", "align-self", "AlignSelf", Kind::Keyword(&["auto", "center", "flex-start", "flex-end", "stretch", "baseline"])),
     prop("justify_content", "justify-content", "JustifyContent", Kind::Keyword(&["center", "flex-start", "flex-end", "space-between", "space-around", "space-evenly"])),
     prop("flex_wrap", "flex-wrap", "FlexWrap", Kind::Keyword(&["wrap", "nowrap", "wrap-reverse"])),
