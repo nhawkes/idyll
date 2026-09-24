@@ -372,7 +372,11 @@ impl<T: 'static> MutableVec<T> {
     {
         let mut indexed: Vec<(Row, T)> = {
             let inner = self.inner();
-            inner.order.iter().map(|&row| (row, inner.cells[&row].peek().clone())).collect()
+            inner
+                .order
+                .iter()
+                .map(|&row| (row, inner.cells[&row].peek().clone()))
+                .collect()
         };
         indexed.sort_by(|(_, a), (_, b)| cmp(a, b));
         let new_order: Vec<Row> = indexed.into_iter().map(|(row, _)| row).collect();
@@ -384,10 +388,16 @@ impl<T: 'static> MutableVec<T> {
             if new_order == inner.order {
                 return;
             }
-            let old_pos: HashMap<Row, usize> =
-                inner.order.iter().enumerate().map(|(i, &row)| (row, i)).collect();
-            let old_pos_of: Vec<Option<usize>> =
-                new_order.iter().map(|row| old_pos.get(row).copied()).collect();
+            let old_pos: HashMap<Row, usize> = inner
+                .order
+                .iter()
+                .enumerate()
+                .map(|(i, &row)| (row, i))
+                .collect();
+            let old_pos_of: Vec<Option<usize>> = new_order
+                .iter()
+                .map(|row| old_pos.get(row).copied())
+                .collect();
             let keep = lis_mask(&old_pos_of);
             let ops = new_order
                 .iter()
@@ -507,7 +517,10 @@ impl<T: 'static> MutableVec<T> {
         let old_keys: Vec<K> = {
             let old_values: Vec<T> = {
                 let inner = self.inner();
-                old_rows.iter().map(|row| inner.cells[row].peek().clone()).collect()
+                old_rows
+                    .iter()
+                    .map(|row| inner.cells[row].peek().clone())
+                    .collect()
             };
             old_values.iter().map(&key_fn).collect()
         };
@@ -515,7 +528,10 @@ impl<T: 'static> MutableVec<T> {
         let mut old_pos_of: Vec<Option<usize>> = vec![None; n];
         let mut removed: Vec<Row> = Vec::new();
         for ((old_pos, row), key) in old_rows.iter().enumerate().zip(old_keys) {
-            match target_pos.get_mut(&key).and_then(|positions| positions.pop_front()) {
+            match target_pos
+                .get_mut(&key)
+                .and_then(|positions| positions.pop_front())
+            {
                 Some(i) => {
                     matched[i] = Some(*row);
                     old_pos_of[i] = Some(old_pos);
@@ -706,13 +722,25 @@ mod tests {
     }
 
     fn vals(v: &MutableVec<i32>) -> Vec<i32> {
-        v.snapshot_order().iter().map(|&r| *v.get(r).unwrap().peek()).collect()
+        v.snapshot_order()
+            .iter()
+            .map(|&r| *v.get(r).unwrap().peek())
+            .collect()
     }
 
     fn op_counts(ops: &[SpliceOp]) -> (usize, usize, usize) {
-        let inserts = ops.iter().filter(|o| matches!(o, SpliceOp::Insert { .. })).count();
-        let removes = ops.iter().filter(|o| matches!(o, SpliceOp::Remove { .. })).count();
-        let moves = ops.iter().filter(|o| matches!(o, SpliceOp::Move { .. })).count();
+        let inserts = ops
+            .iter()
+            .filter(|o| matches!(o, SpliceOp::Insert { .. }))
+            .count();
+        let removes = ops
+            .iter()
+            .filter(|o| matches!(o, SpliceOp::Remove { .. }))
+            .count();
+        let moves = ops
+            .iter()
+            .filter(|o| matches!(o, SpliceOp::Move { .. }))
+            .count();
         (inserts, removes, moves)
     }
 
@@ -757,20 +785,38 @@ mod tests {
         let rows = v.snapshot_order();
 
         v.sync(&t(), vec![1, 2, 3]);
-        assert!(consumer.drain().is_empty(), "the same array is no ops at all");
+        assert!(
+            consumer.drain().is_empty(),
+            "the same array is no ops at all"
+        );
         assert_eq!(v.snapshot_order(), rows);
 
         v.sync(&t(), vec![1, 9, 3]);
-        assert!(consumer.drain().is_empty(), "a changed value is a cell write, not a splice");
+        assert!(
+            consumer.drain().is_empty(),
+            "a changed value is a cell write, not a splice"
+        );
         assert_eq!(vals(&v), vec![1, 9, 3]);
-        assert_eq!(v.snapshot_order(), rows, "and the rows stand where they stood");
+        assert_eq!(
+            v.snapshot_order(),
+            rows,
+            "and the rows stand where they stood"
+        );
 
         v.sync(&t(), vec![1, 9, 3, 4, 5]);
         assert_eq!(op_counts(&consumer.drain()), (2, 0, 0), "growing appends");
-        assert_eq!(v.snapshot_order()[..3], rows[..], "the rows it had are untouched");
+        assert_eq!(
+            v.snapshot_order()[..3],
+            rows[..],
+            "the rows it had are untouched"
+        );
 
         v.sync(&t(), vec![1, 9]);
-        assert_eq!(op_counts(&consumer.drain()), (0, 3, 0), "shrinking drops the tail");
+        assert_eq!(
+            op_counts(&consumer.drain()),
+            (0, 3, 0),
+            "shrinking drops the tail"
+        );
         assert_eq!(vals(&v), vec![1, 9]);
 
         v.sync(&t(), Vec::new());
@@ -785,7 +831,11 @@ mod tests {
         v.push(&t(), 1);
         v.push(&t(), 2);
         v.sort_by(&t(), |a, b| a.cmp(b));
-        let vals: Vec<i32> = v.snapshot_order().iter().map(|&r| *v.get(r).unwrap().peek()).collect();
+        let vals: Vec<i32> = v
+            .snapshot_order()
+            .iter()
+            .map(|&r| *v.get(r).unwrap().peek())
+            .collect();
         assert_eq!(vals, vec![1, 2, 3]);
     }
 
@@ -825,7 +875,11 @@ mod tests {
         let (r2, r3) = (survivors[0], survivors[1]);
         v.sync_by_key(&t(), vec![2, 3], |x| *x);
         assert_eq!(vals(&v), vec![2, 3]);
-        assert_eq!(v.snapshot_order(), vec![r2, r3], "survivors keep their rows");
+        assert_eq!(
+            v.snapshot_order(),
+            vec![r2, r3],
+            "survivors keep their rows"
+        );
         assert_eq!(op_counts(&c.drain()), (0, 1, 0), "one removal, zero moves");
     }
 
@@ -874,21 +928,40 @@ mod tests {
         let (_rt, owner) = scoped();
         let v: MutableVec<(i32, &'static str)> = owner.mutable_vec();
         let c = v.consume();
-        v.sync_by_key(&t(), vec![(7, "first"), (8, "only"), (7, "second")], |item| item.0);
-        assert_eq!(v.snapshot_order().len(), 3, "duplicates never collapse the list");
+        v.sync_by_key(
+            &t(),
+            vec![(7, "first"), (8, "only"), (7, "second")],
+            |item| item.0,
+        );
+        assert_eq!(
+            v.snapshot_order().len(),
+            3,
+            "duplicates never collapse the list"
+        );
         let rows = v.snapshot_order();
         c.drain();
 
         // Re-sync with the same shape: occurrences match in order — zero structural ops.
-        v.sync_by_key(&t(), vec![(7, "first"), (8, "only"), (7, "second")], |item| item.0);
+        v.sync_by_key(
+            &t(),
+            vec![(7, "first"), (8, "only"), (7, "second")],
+            |item| item.0,
+        );
         assert_eq!(v.snapshot_order(), rows, "occurrence identity is stable");
-        assert!(c.drain().is_empty(), "an unchanged duplicate group is silent");
+        assert!(
+            c.drain().is_empty(),
+            "an unchanged duplicate group is silent"
+        );
 
         // Dropping one duplicate removes exactly one row; the survivor keeps identity
         // as occurrence 0.
         v.sync_by_key(&t(), vec![(7, "first"), (8, "only")], |item| item.0);
         assert_eq!(v.snapshot_order(), &rows[..2]);
-        assert_eq!(op_counts(&c.drain()), (0, 1, 0), "one removal, nothing else");
+        assert_eq!(
+            op_counts(&c.drain()),
+            (0, 1, 0),
+            "one removal, nothing else"
+        );
     }
 
     #[test]
@@ -900,7 +973,11 @@ mod tests {
         v.push(&t(), 1);
         v.push(&t(), 2);
         assert_eq!(op_counts(&a.drain()), (2, 0, 0));
-        assert_eq!(op_counts(&b.drain()), (2, 0, 0), "second consumer is independent");
+        assert_eq!(
+            op_counts(&b.drain()),
+            (2, 0, 0),
+            "second consumer is independent"
+        );
     }
 
     #[test]
@@ -913,10 +990,16 @@ mod tests {
         let consumer = v.consume();
 
         v.sync_by_key(&t(), vec![(1, "a"), (2, "a"), (3, "a")], |item| item.0);
-        assert!(consumer.drain().is_empty(), "unchanged sync is fully silent");
+        assert!(
+            consumer.drain().is_empty(),
+            "unchanged sync is fully silent"
+        );
 
         v.sync_by_key(&t(), vec![(1, "a"), (2, "b"), (3, "a")], |item| item.0);
-        assert!(consumer.drain().is_empty(), "a value change is not a structural op");
+        assert!(
+            consumer.drain().is_empty(),
+            "a value change is not a structural op"
+        );
         assert_eq!(*v.get(v.snapshot_order()[1]).unwrap().peek(), (2, "b"));
     }
 }
@@ -954,7 +1037,10 @@ mod callback_reentrancy {
             a.cmp(b)
         });
         assert_eq!(
-            v.snapshot_order().iter().map(|&r| *v.get(r).unwrap().peek()).collect::<Vec<_>>(),
+            v.snapshot_order()
+                .iter()
+                .map(|&r| *v.get(r).unwrap().peek())
+                .collect::<Vec<_>>(),
             vec![1, 2, 3]
         );
 
@@ -964,9 +1050,11 @@ mod callback_reentrancy {
             *value
         });
         assert_eq!(
-            v.snapshot_order().iter().map(|&r| *v.get(r).unwrap().peek()).collect::<Vec<_>>(),
+            v.snapshot_order()
+                .iter()
+                .map(|&r| *v.get(r).unwrap().peek())
+                .collect::<Vec<_>>(),
             vec![9, 1, 2]
         );
     }
 }
-

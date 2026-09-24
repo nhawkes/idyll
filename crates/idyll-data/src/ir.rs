@@ -87,10 +87,21 @@ pub struct FragmentDef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum CanonSel {
-    Leaf { field: String },
-    Spread { edge: String, frag: Box<CanonOp> },
-    List { edge: String, frag: Box<CanonOp> },
-    Optional { edge: String, frag: Box<CanonOp> },
+    Leaf {
+        field: String,
+    },
+    Spread {
+        edge: String,
+        frag: Box<CanonOp>,
+    },
+    List {
+        edge: String,
+        frag: Box<CanonOp>,
+    },
+    Optional {
+        edge: String,
+        frag: Box<CanonOp>,
+    },
     Root {
         field: String,
         args: Vec<String>,
@@ -184,7 +195,9 @@ fn canon_selection(selection: &[Sel]) -> Vec<CanonSel> {
     let mut selection: Vec<CanonSel> = selection
         .iter()
         .map(|sel| match *sel {
-            Sel::Leaf { field } => CanonSel::Leaf { field: field.to_string() },
+            Sel::Leaf { field } => CanonSel::Leaf {
+                field: field.to_string(),
+            },
             Sel::Spread { edge, frag } => CanonSel::Spread {
                 edge: edge.to_string(),
                 frag: Box::new(CanonOp::from_def(frag)),
@@ -197,7 +210,12 @@ fn canon_selection(selection: &[Sel]) -> Vec<CanonSel> {
                 edge: edge.to_string(),
                 frag: Box::new(CanonOp::from_def(frag)),
             },
-            Sel::Root { field, args, list, frag } => {
+            Sel::Root {
+                field,
+                args,
+                list,
+                frag,
+            } => {
                 let mut args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
                 args.sort(); // arg order is not semantically meaningful
                 CanonSel::Root {
@@ -216,7 +234,10 @@ fn canon_selection(selection: &[Sel]) -> Vec<CanonSel> {
                     })
                     .collect();
                 variants.sort_by(|a, b| a.variant.cmp(&b.variant));
-                CanonSel::Enum { field: field.to_string(), variants }
+                CanonSel::Enum {
+                    field: field.to_string(),
+                    variants,
+                }
             }
         })
         .collect();
@@ -417,7 +438,10 @@ mod tests {
         // The canonical form of PostCard contains Avatar's selection inlined under the
         // `author` edge — one operation, fragments baked in (Relay-classic).
         let json = CanonOp::from_def(&POST_CARD).to_canonical_json();
-        assert!(json.contains("\"avatar_url\""), "inlined child field missing:\n{json}");
+        assert!(
+            json.contains("\"avatar_url\""),
+            "inlined child field missing:\n{json}"
+        );
         assert!(json.contains("\"author\""), "edge missing:\n{json}");
     }
 }

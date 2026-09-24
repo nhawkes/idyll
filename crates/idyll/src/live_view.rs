@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::hash::Hash;
 use std::rc::Rc;
 
-
 use crate::driver::SlotId;
 use crate::signal::{Cx, SignalVec};
 
@@ -292,8 +291,7 @@ fn no_events<M>() -> Rc<dyn Fn(u32, Event) -> Option<M>> {
     Rc::new(|_, _| None)
 }
 
-fn no_bindings() -> Rc<dyn Fn(&Cx, &[crate::driver::NodeId], u32) -> Option<crate::driver::DomOp>>
-{
+fn no_bindings() -> Rc<dyn Fn(&Cx, &[crate::driver::NodeId], u32) -> Option<crate::driver::DomOp>> {
     Rc::new(|_, _, _| None)
 }
 
@@ -352,7 +350,10 @@ pub enum FragmentKind<M: 'static> {
     /// typed read + body, the single closure a `@for` call site keeps (a stored arm
     /// cannot speak a fixed source's borrowed item type, so rows do not ride the
     /// dispatch).
-    List { structure: Rc<dyn ForStructure>, rebuild: Rc<dyn Fn(crate::Row) -> Option<LiveView<M>>> },
+    List {
+        structure: Rc<dyn ForStructure>,
+        rebuild: Rc<dyn Fn(crate::Row) -> Option<LiveView<M>>>,
+    },
     /// `@for` over a plain iterator: rows built once at view construction — no
     /// changes, no subscription, nothing minted, nothing stored.
     FixedList(RefCell<Vec<(crate::Row, LiveView<M>)>>),
@@ -437,12 +438,13 @@ pub trait ForFragmentSource<M: 'static>: Sized {
 impl<T: 'static, M: 'static> ForFragmentSource<M> for crate::MutableVec<T> {
     type Binding = (crate::Row, crate::Signal<T>);
     fn into_parts(self, build: impl Fn(Self::Binding) -> LiveView<M> + 'static) -> FragmentKind<M> {
-        let structure = Structure { source: self.clone(), _row: std::marker::PhantomData };
+        let structure = Structure {
+            source: self.clone(),
+            _row: std::marker::PhantomData,
+        };
         FragmentKind::List {
             structure: Rc::new(structure),
-            rebuild: Rc::new(move |row| {
-                SignalVec::read(&self, row).map(|cell| build((row, cell)))
-            }),
+            rebuild: Rc::new(move |row| SignalVec::read(&self, row).map(|cell| build((row, cell)))),
         }
     }
 }
@@ -450,7 +452,10 @@ impl<T: 'static, M: 'static> ForFragmentSource<M> for crate::MutableVec<T> {
 impl<T: 'static, K: 'static, M: 'static> ForFragmentSource<M> for crate::KeyedVec<T, K> {
     type Binding = (K, crate::Signal<T>);
     fn into_parts(self, build: impl Fn(Self::Binding) -> LiveView<M> + 'static) -> FragmentKind<M> {
-        let structure = Structure { source: self.clone(), _row: std::marker::PhantomData };
+        let structure = Structure {
+            source: self.clone(),
+            _row: std::marker::PhantomData,
+        };
         FragmentKind::List {
             structure: Rc::new(structure),
             rebuild: Rc::new(move |row| {
@@ -637,7 +642,9 @@ impl<M: 'static> LiveView<M> {
             .filter_map(|node| match node {
                 TplNode::Element { slot, .. } => slot.map(|s| s.0),
                 TplNode::TextSlot(slot) | TplNode::AnchorSlot(slot) => Some(slot.0),
-                TplNode::Text(_) | TplNode::DangerouslyUnescapedHtml(_) | TplNode::Live { .. } => None,
+                TplNode::Text(_) | TplNode::DangerouslyUnescapedHtml(_) | TplNode::Live { .. } => {
+                    None
+                }
             })
             .max()
             .map(|max| max + 1)
@@ -653,7 +660,9 @@ impl<M: 'static> LiveView<M> {
         }
         for node in self.template.nodes.to_mut() {
             match node {
-                TplNode::Element { slot: Some(slot), .. } => slot.0 += offset,
+                TplNode::Element {
+                    slot: Some(slot), ..
+                } => slot.0 += offset,
                 TplNode::TextSlot(slot) | TplNode::AnchorSlot(slot) => slot.0 += offset,
                 _ => {}
             }
@@ -724,12 +733,7 @@ impl<M: 'static> LiveView<M> {
         })
     }
 
-    pub fn attr(
-        self,
-        slot: u32,
-        name: &'static str,
-        f: impl Fn(&Cx) -> String + 'static,
-    ) -> Self {
+    pub fn attr(self, slot: u32, name: &'static str, f: impl Fn(&Cx) -> String + 'static) -> Self {
         self.one_binding(slot, move |cx, node_id| crate::driver::DomOp::SetAttr {
             node_id,
             name,
@@ -746,10 +750,12 @@ impl<M: 'static> LiveView<M> {
         name: &'static str,
         f: impl Fn(&Cx) -> String + 'static,
     ) -> Self {
-        self.one_binding(slot, move |cx, node_id| crate::driver::DomOp::SetStyleProp {
-            node_id,
-            name,
-            value: f(cx),
+        self.one_binding(slot, move |cx, node_id| {
+            crate::driver::DomOp::SetStyleProp {
+                node_id,
+                name,
+                value: f(cx),
+            }
         })
     }
 
@@ -856,7 +862,10 @@ impl<M: 'static> LiveView<M> {
             binding_slots: Vec::new(),
             paintings: Vec::new(),
             event_slots: Vec::new(),
-            fragments: vec![FragmentDecl { slot: SlotId(slot), kind: FragmentSource::Ready(kind) }],
+            fragments: vec![FragmentDecl {
+                slot: SlotId(slot),
+                kind: FragmentSource::Ready(kind),
+            }],
             run: no_bindings(),
             event: no_events(),
             fragment: Rc::new(fragment),
@@ -916,9 +925,9 @@ impl<M: 'static> LiveView<M> {
     /// hand-built mount). The child lives in the flat executor; this view only marks where it
     /// splices.
     pub fn child_slot(child_id: crate::runtime::ChildId) -> Self {
-        LiveView::new(vec![crate::template::TplNode::AnchorSlot(SlotId(0))]).child_anchor(0, child_id)
+        LiveView::new(vec![crate::template::TplNode::AnchorSlot(SlotId(0))])
+            .child_anchor(0, child_id)
     }
-
 
     pub fn if_fragment(
         self,
@@ -960,7 +969,10 @@ impl<M: 'static> LiveView<M> {
         let count = arms.len();
         self.one_fragment(
             slot,
-            FragmentKind::Branch { keep, arms: count as u32 },
+            FragmentKind::Branch {
+                keep,
+                arms: count as u32,
+            },
             move |cx, op| match op {
                 FragmentOp::Select(_) => {
                     let active = selector(cx);
@@ -1032,7 +1044,6 @@ impl<M: 'static> LiveView<M> {
             }),
         )
     }
-
 }
 
 /// Content converts implicitly only at `M = Never` — the message type only static
@@ -1075,7 +1086,12 @@ mod tests {
 
         assert_eq!(
             &view.template.nodes[..],
-            &[el("p", None, 1), text("left"), el("p", None, 1), text("right")]
+            &[
+                el("p", None, 1),
+                text("left"),
+                el("p", None, 1),
+                text("right")
+            ]
         );
     }
 
@@ -1137,10 +1153,14 @@ mod tests {
             Some(|_cx: &crate::Cx| LiveView::new(vec![el("h1", None, 1), text("hidden")])),
             false,
         )
-        .for_source(1, items, |(_row, item): (crate::Row, crate::Signal<String>)| {
-            LiveView::new(vec![el("p", None, 1), TplNode::TextSlot(SlotId(0))])
-                .text(0, move |_cx: &crate::Cx| item.peek().clone())
-        });
+        .for_source(
+            1,
+            items,
+            |(_row, item): (crate::Row, crate::Signal<String>)| {
+                LiveView::new(vec![el("p", None, 1), TplNode::TextSlot(SlotId(0))])
+                    .text(0, move |_cx: &crate::Cx| item.peek().clone())
+            },
+        );
 
         assert_eq!(
             fold_of(view),
@@ -1152,8 +1172,12 @@ mod tests {
     fn the_fold_emits_no_client_scaffolding() {
         // An element slot (events) and a child anchor: neither leaves a trace in the
         // static output — slots are IR, not markup, so there is nothing to strip.
-        let view: LiveView<()> = LiveView::new(vec![el("main", Some(0), 1), TplNode::AnchorSlot(SlotId(1))])
-            .event_map(0, "click", |_| ());
+        let view: LiveView<()> =
+            LiveView::new(vec![el("main", Some(0), 1), TplNode::AnchorSlot(SlotId(1))]).event_map(
+                0,
+                "click",
+                |_| (),
+            );
 
         assert_eq!(fold_of(view), "<main></main>");
     }

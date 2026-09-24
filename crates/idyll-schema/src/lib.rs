@@ -142,7 +142,9 @@ impl FieldType {
     }
 
     pub fn value(value: impl Into<String>) -> Self {
-        FieldType::Value { value: value.into() }
+        FieldType::Value {
+            value: value.into(),
+        }
     }
 
     pub fn list(of: FieldType) -> Self {
@@ -205,7 +207,10 @@ impl MutationDef {
     }
 
     pub fn arg(mut self, name: impl Into<String>, ty: FieldType) -> Self {
-        self.args.push(FieldDef { name: name.into(), ty });
+        self.args.push(FieldDef {
+            name: name.into(),
+            ty,
+        });
         self
     }
 
@@ -413,13 +418,21 @@ pub enum SchemaError {
     /// `record.field` reaches a `#[node]` type as an inlined value: the node is
     /// addressable (it is in `nodes`) but the edge never normalizes it, so a read
     /// of it would wait forever.
-    InlinedNode { record: String, field: String, node: String },
+    InlinedNode {
+        record: String,
+        field: String,
+        node: String,
+    },
 }
 
 impl std::fmt::Display for SchemaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SchemaError::InlinedNode { record, field, node } => write!(
+            SchemaError::InlinedNode {
+                record,
+                field,
+                node,
+            } => write!(
                 f,
                 "`{record}.{field}` reaches node `{node}` as an inlined value, so `{node}` is \
                  addressable but never normalized and a read of it would hang. Declare `{node}` \
@@ -456,11 +469,17 @@ mod tests {
     // Bare entries (the macros' entries also register their reachable types; these
     // tests exercise the schema artifact itself, not reachability).
     fn root_entry(def: RootDef) -> RootEntry {
-        RootEntry { def, register: |_| {} }
+        RootEntry {
+            def,
+            register: |_| {},
+        }
     }
 
     fn mutation_entry(def: MutationDef) -> MutationEntry {
-        MutationEntry { def, register: |_| {} }
+        MutationEntry {
+            def,
+            register: |_| {},
+        }
     }
 
     /// `CodeGroup` declared a node but reached through an inlined edge: `Frag<CodeGroupFrag>`
@@ -472,15 +491,23 @@ mod tests {
             nodes: vec![
                 RecordDef {
                     name: "Page".into(),
-                    fields: vec![FieldDef { name: "groups".into(), ty }],
+                    fields: vec![FieldDef {
+                        name: "groups".into(),
+                        ty,
+                    }],
                 },
-                RecordDef { name: "CodeGroup".into(), fields: Vec::new() },
+                RecordDef {
+                    name: "CodeGroup".into(),
+                    fields: Vec::new(),
+                },
             ],
             ..Schema::new()
         };
 
         let direct = inlined(FieldType::value("CodeGroup"));
-        let error = direct.check_edges().expect_err("a node reached inline is rejected");
+        let error = direct
+            .check_edges()
+            .expect_err("a node reached inline is rejected");
         assert_eq!(
             error,
             SchemaError::InlinedNode {
@@ -491,13 +518,19 @@ mod tests {
         );
 
         // A list hides the node the same way, and so does `Optional`.
-        assert!(inlined(FieldType::list(FieldType::value("CodeGroup"))).check_edges().is_err());
-        assert!(inlined(FieldType::optional(FieldType::value("CodeGroup"))).check_edges().is_err());
+        assert!(inlined(FieldType::list(FieldType::value("CodeGroup")))
+            .check_edges()
+            .is_err());
+        assert!(inlined(FieldType::optional(FieldType::value("CodeGroup")))
+            .check_edges()
+            .is_err());
 
         // A value reached inline is the ordinary case, and a node reached by reference is
         // what a node is for. Neither is the bug.
         assert!(inlined(FieldType::value("CodeTab")).check_edges().is_ok());
-        assert!(inlined(FieldType::reference("CodeGroup")).check_edges().is_ok());
+        assert!(inlined(FieldType::reference("CodeGroup"))
+            .check_edges()
+            .is_ok());
     }
 
     fn sample() -> Schema {
@@ -522,7 +555,10 @@ mod tests {
         let hash = OpHash::of_bytes(contents);
 
         // Display is the full digest's first 32 hex chars — filename-prefix compatible.
-        let full: String = Sha256::digest(contents).iter().map(|b| format!("{b:02x}")).collect();
+        let full: String = Sha256::digest(contents)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         assert_eq!(hash.to_string(), full[..32]);
 
         // FromStr (the HTTP boundary), words (the WIT wire), serde (hex string, not
@@ -535,7 +571,10 @@ mod tests {
 
         // Garbage is unrepresentable: the parse rejects it at the boundary.
         assert!("not-a-hash".parse::<OpHash>().is_err());
-        assert!(full.parse::<OpHash>().is_err(), "full 64-hex is not the 32-hex wire form");
+        assert!(
+            full.parse::<OpHash>().is_err(),
+            "full 64-hex is not the 32-hex wire form"
+        );
     }
 
     #[test]
@@ -551,8 +590,14 @@ mod tests {
 
         // Enums register in reachability order, which is not meaningful either —
         // two registration orders, one artifact.
-        let e1 = EnumDef { name: "A".into(), variants: vec![] };
-        let e2 = EnumDef { name: "B".into(), variants: vec![] };
+        let e1 = EnumDef {
+            name: "A".into(),
+            variants: vec![],
+        };
+        let e2 = EnumDef {
+            name: "B".into(),
+            variants: vec![],
+        };
         let mut x = Schema::new();
         x.enums.push(e1.clone());
         x.enums.push(e2.clone());
@@ -567,7 +612,10 @@ mod tests {
         let schema = sample();
         let parsed = Schema::from_json(&schema.to_json().unwrap()).unwrap();
         assert_eq!(parsed.root_def("todos").unwrap().output, "Todo");
-        assert_eq!(parsed.mutation_def("add-todo").unwrap().args[0].name, "text");
+        assert_eq!(
+            parsed.mutation_def("add-todo").unwrap().args[0].name,
+            "text"
+        );
         // Round-tripping preserves the hash — the artifact IS the schema.
         assert_eq!(parsed.content_hash(), schema.content_hash());
     }
@@ -575,8 +623,9 @@ mod tests {
     #[test]
     fn changing_the_schema_changes_the_hash() {
         let schema = sample();
-        let widened =
-            sample().mutation(mutation_entry(MutationDef::new("remove-todo").returns("Todo")));
+        let widened = sample().mutation(mutation_entry(
+            MutationDef::new("remove-todo").returns("Todo"),
+        ));
         assert_ne!(schema.content_hash(), widened.content_hash());
     }
 }

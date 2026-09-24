@@ -5,7 +5,7 @@
 //! live — the marker's key IS the row's record reference, typed end to end. A
 //! mutation's refresh seed re-syncs the keyed rows in place.
 
-use idyll::{view, live_view, Ctx, Never, Setup};
+use idyll::{live_view, view, Ctx, Never, Setup};
 use idyll_data::{fragment, query, Preloaded, Store};
 
 fragment! { TodoCheck on Todo { id, text, done } }
@@ -56,7 +56,9 @@ pub async fn rows(ctx: Ctx<Setup, RowsMsg>, seed: PageSeed) -> idyll::Result {
         match msg {
             // Success arrives as data (the refresh seed re-syncs the keyed rows);
             // failure faults this live to its boundary.
-            RowsMsg::Add => turn.mutate::<AddTodoOp>(AddTodoOpVars { text: "New todo".into() }),
+            RowsMsg::Add => turn.mutate::<AddTodoOp>(AddTodoOpVars {
+                text: "New todo".into(),
+            }),
         }
     }
 }
@@ -75,10 +77,12 @@ pub async fn check(
 ) -> idyll::Result {
     let store = Store::of(&ctx, &seed)?;
     let live = TodoCheck::read(&store.cache, key).await;
-    let mut ctx = ctx.render(live_view! {
-        input type=("checkbox") checked[$live.done]
-            onchange=>(|_| Some(CheckMsg::Toggle))
-    }).await?;
+    let mut ctx = ctx
+        .render(live_view! {
+            input type=("checkbox") checked[$live.done]
+                onchange=>(|_| Some(CheckMsg::Toggle))
+        })
+        .await?;
     loop {
         let (msg, turn) = ctx.recv().await?;
         match msg {
@@ -102,10 +106,12 @@ pub async fn page(ctx: Ctx<Setup, Never>, _seed: PageSeed) -> idyll::Result {
 
 /// Document-head content.
 pub async fn head(ctx: Ctx<Setup, Never>, _seed: PageSeed) -> idyll::Result {
-    Ok(ctx.render_content(view! {
-        meta charset=("utf-8")
-        meta name=("viewport") content=("width=device-width, initial-scale=1")
-    }).await?)
+    Ok(ctx
+        .render_content(view! {
+            meta charset=("utf-8")
+            meta name=("viewport") content=("width=device-width, initial-scale=1")
+        })
+        .await?)
 }
 
 idyll::guest! {

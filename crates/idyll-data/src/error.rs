@@ -22,26 +22,57 @@ pub enum ValidateError {
     /// The operation's list-ness disagrees with the root's declaration.
     RootArity { root: String, schema_list: bool },
     /// The operation selects on a different record than the root yields.
-    RootOutput { root: String, yields: String, selects: String },
+    RootOutput {
+        root: String,
+        yields: String,
+        selects: String,
+    },
     /// A fragment selects on a record the schema doesn't declare.
     UnknownRecord { record: String },
     /// A selection reads a field its scope doesn't have.
     UnknownField { scope: String, field: String },
     /// A spread edge whose field isn't a reference to (or embedding of) the target.
-    SpreadEdge { scope: String, edge: String, target: String, found: FieldType },
+    SpreadEdge {
+        scope: String,
+        edge: String,
+        target: String,
+        found: FieldType,
+    },
     /// A list edge whose field isn't a list of the target.
-    ListEdge { scope: String, edge: String, target: String, found: FieldType },
+    ListEdge {
+        scope: String,
+        edge: String,
+        target: String,
+        found: FieldType,
+    },
     /// An optional edge whose field isn't an optional reference to (or embedding of) the
     /// target.
-    OptionalEdge { scope: String, edge: String, target: String, found: FieldType },
+    OptionalEdge {
+        scope: String,
+        edge: String,
+        target: String,
+        found: FieldType,
+    },
     /// An enum selection on a field that isn't sum-typed.
     NotSum { scope: String, field: String },
     /// An enum selection whose field names a type that isn't a schema enum.
-    UnknownEnum { scope: String, field: String, name: String },
+    UnknownEnum {
+        scope: String,
+        field: String,
+        name: String,
+    },
     /// A variant selection the enum doesn't declare.
-    UnknownVariant { enumeration: String, variant: String },
+    UnknownVariant {
+        enumeration: String,
+        variant: String,
+    },
     /// A sum-typed field matched non-exhaustively.
-    MissingVariant { scope: String, field: String, enumeration: String, variant: String },
+    MissingVariant {
+        scope: String,
+        field: String,
+        enumeration: String,
+        variant: String,
+    },
     /// A root selection nested inside a fragment.
     NestedRoot { root: String, scope: String },
     /// The artifact names a mutation the schema doesn't declare.
@@ -49,7 +80,11 @@ pub enum ValidateError {
     /// The artifact passes an argument the mutation doesn't take.
     UnknownArgument { mutation: String, argument: String },
     /// The artifact's response selects on a different record than the mutation yields.
-    MutationOutput { mutation: String, yields: String, selects: String },
+    MutationOutput {
+        mutation: String,
+        yields: String,
+        selects: String,
+    },
     /// A selected root has no resolver registered.
     MissingResolver { root: String },
     /// A followed `Ref` edge has no fetcher registered for its target.
@@ -66,9 +101,18 @@ pub enum ValidateError {
     /// The `route` root yields a record the schema doesn't define.
     UnknownPageRecord { yields: String },
     /// A page contract field (`id`, `title`) is missing.
-    PageFieldMissing { page: String, field: String, expected: FieldType },
+    PageFieldMissing {
+        page: String,
+        field: String,
+        expected: FieldType,
+    },
     /// A page contract field exists with the wrong type.
-    PageFieldType { page: String, field: String, expected: FieldType, found: FieldType },
+    PageFieldType {
+        page: String,
+        field: String,
+        expected: FieldType,
+        found: FieldType,
+    },
 }
 
 impl std::fmt::Display for ValidateError {
@@ -76,40 +120,88 @@ impl std::fmt::Display for ValidateError {
         use ValidateError::*;
         match self {
             TopLevelNotRoot { op } => {
-                write!(f, "operation `{op}`: top-level selections must be root fields")
+                write!(
+                    f,
+                    "operation `{op}`: top-level selections must be root fields"
+                )
             }
             UnknownRoot { root } => write!(f, "root `{root}` is not in the schema"),
             RootArity { root, schema_list } => {
-                let (schema_side, op_side) =
-                    if *schema_list { ("a list", "single") } else { ("single", "a list") };
+                let (schema_side, op_side) = if *schema_list {
+                    ("a list", "single")
+                } else {
+                    ("single", "a list")
+                };
                 write!(
                     f,
                     "root `{root}` is {schema_side} in the schema but the operation treats \
                      it as {op_side}"
                 )
             }
-            RootOutput { root, yields, selects } => {
-                write!(f, "root `{root}` yields `{yields}` but the operation selects on `{selects}`")
+            RootOutput {
+                root,
+                yields,
+                selects,
+            } => {
+                write!(
+                    f,
+                    "root `{root}` yields `{yields}` but the operation selects on `{selects}`"
+                )
             }
             UnknownRecord { record } => write!(f, "record `{record}` is not in the schema"),
             UnknownField { scope, field } => write!(f, "`{scope}` has no field `{field}`"),
-            SpreadEdge { scope, edge, target, found } => {
-                write!(f, "edge `{scope}.{edge}` is {found:?}, not a `{target}` reference")
+            SpreadEdge {
+                scope,
+                edge,
+                target,
+                found,
+            } => {
+                write!(
+                    f,
+                    "edge `{scope}.{edge}` is {found:?}, not a `{target}` reference"
+                )
             }
-            ListEdge { scope, edge, target, found } => {
-                write!(f, "edge `{scope}.{edge}` is {found:?}, not a list of `{target}`")
+            ListEdge {
+                scope,
+                edge,
+                target,
+                found,
+            } => {
+                write!(
+                    f,
+                    "edge `{scope}.{edge}` is {found:?}, not a list of `{target}`"
+                )
             }
-            OptionalEdge { scope, edge, target, found } => {
-                write!(f, "edge `{scope}.{edge}` is {found:?}, not an optional `{target}`")
+            OptionalEdge {
+                scope,
+                edge,
+                target,
+                found,
+            } => {
+                write!(
+                    f,
+                    "edge `{scope}.{edge}` is {found:?}, not an optional `{target}`"
+                )
             }
             NotSum { scope, field } => write!(f, "`{scope}.{field}` is not a sum-typed field"),
             UnknownEnum { scope, field, name } => {
-                write!(f, "`{scope}.{field}` names `{name}`, which is not a schema enum")
+                write!(
+                    f,
+                    "`{scope}.{field}` names `{name}`, which is not a schema enum"
+                )
             }
-            UnknownVariant { enumeration, variant } => {
+            UnknownVariant {
+                enumeration,
+                variant,
+            } => {
                 write!(f, "`{enumeration}` has no variant `{variant}`")
             }
-            MissingVariant { scope, field, enumeration, variant } => write!(
+            MissingVariant {
+                scope,
+                field,
+                enumeration,
+                variant,
+            } => write!(
                 f,
                 "`{scope}.{field}` does not select `{enumeration}::{variant}` — a sum type \
                  is matched exhaustively"
@@ -119,7 +211,11 @@ impl std::fmt::Display for ValidateError {
             UnknownArgument { mutation, argument } => {
                 write!(f, "mutation `{mutation}` has no argument `{argument}`")
             }
-            MutationOutput { mutation, yields, selects } => write!(
+            MutationOutput {
+                mutation,
+                yields,
+                selects,
+            } => write!(
                 f,
                 "mutation `{mutation}` yields `{yields}` but the artifact selects on `{selects}`"
             ),
@@ -136,7 +232,10 @@ impl std::fmt::Display for ValidateError {
             ),
             RouteRootIsList => write!(f, "the `route` root must yield one page, not a list"),
             RouteRootArgs { found } => {
-                write!(f, "the `route` root must take exactly `request: Request` (found {found:?})")
+                write!(
+                    f,
+                    "the `route` root must take exactly `request: Request` (found {found:?})"
+                )
             }
             RequestNotPublished => write!(
                 f,
@@ -144,13 +243,25 @@ impl std::fmt::Display for ValidateError {
                  (`.value::<idyll_data::Request>()`)"
             ),
             UnknownPageRecord { yields } => {
-                write!(f, "`route` yields `{yields}`, which the schema does not define")
+                write!(
+                    f,
+                    "`route` yields `{yields}`, which the schema does not define"
+                )
             }
-            PageFieldMissing { page, field, expected } => write!(
+            PageFieldMissing {
+                page,
+                field,
+                expected,
+            } => write!(
                 f,
                 "the page node `{page}` is missing the contract field `{field}: {expected:?}`"
             ),
-            PageFieldType { page, field, expected, found } => write!(
+            PageFieldType {
+                page,
+                field,
+                expected,
+                found,
+            } => write!(
                 f,
                 "the page node `{page}` must have `{field}` of type {expected:?} (found {found:?})"
             ),
@@ -276,7 +387,9 @@ impl std::fmt::Display for PageTitleError {
                 "the route query executed but its seed has no `{page}` record with id \
                  `{path}` — the page's id must be the request path"
             ),
-            PageTitleError::MissingTitle => write!(f, "page record is missing contract field `title`"),
+            PageTitleError::MissingTitle => {
+                write!(f, "page record is missing contract field `title`")
+            }
             PageTitleError::TitleNotString => write!(f, "page `title` is not a string"),
         }
     }

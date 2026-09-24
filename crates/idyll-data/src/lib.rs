@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
-use idyll::{Owner, Signal, MutableSignal};
+use idyll::{MutableSignal, Owner, Signal};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -28,9 +28,8 @@ pub use idyll_schema as schema;
 pub use error::{AbsorbError, CommitError, PageTitleError, StoreError, ValidateError};
 pub use exec_op::{
     arg, execute, execute_mutation, validate, validate_mutation, validate_registered, AppRoot,
-    ContentFn, ExecError, Executed,
-    Fetch, MutationHandle, MutationResolver, Mutations, Queries, Resolvers, Root, RootHandle,
-    RootResolver,
+    ContentFn, ExecError, Executed, Fetch, MutationHandle, MutationResolver, Mutations, Queries,
+    Resolvers, Root, RootHandle, RootResolver,
 };
 
 /// The server-side declaration of a **content field**: the resolver supplies source
@@ -63,15 +62,14 @@ impl idyll_schema::SchemaType for Content {
 /// `Send` on the native host.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 pub use fragment::{
-    field_json, field_value, read_fragment, resolve_fragment, Frag, Fragment, Live,
-    NodeFragment,
+    field_json, field_value, read_fragment, resolve_fragment, Frag, Fragment, Live, NodeFragment,
 };
 pub use idyll_macros::{
     fragment, mutation, mutation_handler, node, query, root, value, Mutations, Queries,
 };
 pub use idyll_schema::{
-    DescribeEnum, DescribeRecord, EnumDef, FieldDef, FieldType, MutationDef, MutationEntry,
-    OpHash, RecordDef, RootDef, RootEntry, Schema, SchemaType, VariantDef,
+    DescribeEnum, DescribeRecord, EnumDef, FieldDef, FieldType, MutationDef, MutationEntry, OpHash,
+    RecordDef, RootDef, RootEntry, Schema, SchemaType, VariantDef,
 };
 pub use ir::{CanonMutation, CanonOp, FragmentDef, MutationFile, QueryFile, Sel, VariantSel};
 
@@ -277,12 +275,22 @@ fn id_key(id: &serde_json::Value) -> String {
 fn commit_shape<'a>(
     type_tag: &str,
     json: &'a serde_json::Value,
-) -> Result<(&'a serde_json::Value, &'a serde_json::Map<String, serde_json::Value>), CommitError> {
+) -> Result<
+    (
+        &'a serde_json::Value,
+        &'a serde_json::Map<String, serde_json::Value>,
+    ),
+    CommitError,
+> {
     let serde_json::Value::Object(fields) = json else {
-        return Err(CommitError::NotAnObject { type_tag: type_tag.to_string() });
+        return Err(CommitError::NotAnObject {
+            type_tag: type_tag.to_string(),
+        });
     };
     let Some(id) = fields.get("id") else {
-        return Err(CommitError::NoId { type_tag: type_tag.to_string() });
+        return Err(CommitError::NoId {
+            type_tag: type_tag.to_string(),
+        });
     };
     Ok((id, fields))
 }
@@ -325,7 +333,9 @@ impl Cache {
         self.records
             .borrow_mut()
             .entry(key)
-            .or_insert_with(|| StoredRecord { signal: self.owner.mutable_signal(json) });
+            .or_insert_with(|| StoredRecord {
+                signal: self.owner.mutable_signal(json),
+            });
     }
 
     /// Upsert a record's JSON in a turn (live data / a refresh commit). The id is the
@@ -345,7 +355,9 @@ impl Cache {
             None => {
                 records.insert(
                     key,
-                    StoredRecord { signal: self.owner.mutable_signal(json) },
+                    StoredRecord {
+                        signal: self.owner.mutable_signal(json),
+                    },
                 );
             }
         }
@@ -480,7 +492,11 @@ impl Cache {
     }
 
     /// A reader for a record's cell, if present — crate plumbing only.
-    pub(crate) fn peek_json(&self, type_tag: &str, id: &serde_json::Value) -> Option<Signal<serde_json::Value>> {
+    pub(crate) fn peek_json(
+        &self,
+        type_tag: &str,
+        id: &serde_json::Value,
+    ) -> Option<Signal<serde_json::Value>> {
         self.records
             .borrow()
             .get(&(type_tag.to_string(), id_key(id)))
@@ -553,7 +569,10 @@ mod tests {
     #[test]
     fn ref_serializes_as_record_id() {
         let reference = Ref::<User>::new(7);
-        assert_eq!(serde_json::to_value(&reference).unwrap(), serde_json::json!(7));
+        assert_eq!(
+            serde_json::to_value(&reference).unwrap(),
+            serde_json::json!(7)
+        );
         let back: Ref<User> = serde_json::from_value(serde_json::json!(7)).unwrap();
         assert_eq!(back.id(), &7);
     }
@@ -561,7 +580,10 @@ mod tests {
     #[test]
     fn replayed_seed_lands_records_readable_by_type_and_id() {
         let mut seed = Seed::new();
-        seed.push(&User { id: 1, name: "Ada".into() });
+        seed.push(&User {
+            id: 1,
+            name: "Ada".into(),
+        });
         seed.push_raw("User", serde_json::json!({ "id": 2, "name": "Grace" }));
 
         let turn = idyll::Turn::for_test();
@@ -587,7 +609,9 @@ mod tests {
         };
         assert_eq!(
             cache.apply_commit(&turn, &not_an_object).unwrap_err(),
-            CommitError::NotAnObject { type_tag: "User".into() }
+            CommitError::NotAnObject {
+                type_tag: "User".into()
+            }
         );
         let no_id = CacheMsg::Commit {
             type_tag: "User".into(),
@@ -595,7 +619,9 @@ mod tests {
         };
         assert_eq!(
             cache.apply_commit(&turn, &no_id).unwrap_err(),
-            CommitError::NoId { type_tag: "User".into() }
+            CommitError::NoId {
+                type_tag: "User".into()
+            }
         );
     }
 
@@ -605,17 +631,23 @@ mod tests {
         let (_rt, owner) = test_scope();
         let cache = Cache::rooted(owner.clone());
         cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "id": 1, "name": "current" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "id": 1, "name": "current" }),
+                },
+            )
             .expect("commit applies");
         let cell = cache.peek_json("User", &serde_json::json!(1)).unwrap();
         cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "id": 1, "name": "newer" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "id": 1, "name": "newer" }),
+                },
+            )
             .expect("commit applies");
         assert_eq!(
             cell.now(&turn)["name"],
@@ -633,10 +665,13 @@ mod tests {
         let (_rt, owner) = test_scope();
         let cache = Cache::rooted(owner);
         let err = cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "name": "no id here" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "name": "no id here" }),
+                },
+            )
             .expect_err("a commit with no `id` cannot be applied");
         assert!(err.to_string().contains("has no `id`"), "got: {err}");
 
@@ -659,16 +694,22 @@ mod tests {
         let (_rt, owner) = test_scope();
         let cache = Cache::rooted(owner.clone());
         cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "id": 1, "name": "Ada" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "id": 1, "name": "Ada" }),
+                },
+            )
             .expect("commit applies");
         cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "id": 1, "role": "admin" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "id": 1, "role": "admin" }),
+                },
+            )
             .expect("commit applies");
         let cell = cache.peek_json("User", &serde_json::json!(1)).unwrap();
         assert_eq!(cell.now(&turn)["name"], "Ada", "unmentioned field persists");
@@ -685,10 +726,13 @@ mod tests {
         assert!(read.as_mut().poll(&mut cx).is_pending());
 
         cache
-            .apply_commit(&turn, &CacheMsg::Commit {
-                type_tag: "User".into(),
-                json: serde_json::json!({ "id": 9, "name": "Ada" }),
-            })
+            .apply_commit(
+                &turn,
+                &CacheMsg::Commit {
+                    type_tag: "User".into(),
+                    json: serde_json::json!({ "id": 9, "name": "Ada" }),
+                },
+            )
             .expect("commit applies");
         let Poll::Ready(signal) = read.as_mut().poll(&mut cx) else {
             panic!("read must resolve once the record lands");
@@ -699,8 +743,14 @@ mod tests {
     #[test]
     fn the_commit_log_round_trips_through_json_into_a_fresh_cache() {
         let mut seed = Seed::new();
-        seed.push(&User { id: 1, name: "Ada".into() });
-        seed.push(&User { id: 1, name: "Lovelace".into() }); // diamond: later wins
+        seed.push(&User {
+            id: 1,
+            name: "Ada".into(),
+        });
+        seed.push(&User {
+            id: 1,
+            name: "Lovelace".into(),
+        }); // diamond: later wins
 
         let wire = serde_json::to_string(&seed).unwrap();
         let replayed: Seed = serde_json::from_str(&wire).unwrap();

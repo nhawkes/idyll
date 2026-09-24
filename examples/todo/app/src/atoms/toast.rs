@@ -15,18 +15,20 @@ pub async fn Toast(
     notice: Signal<Option<String>>,
     dismissed: Callback<Event>,
 ) -> idyll::Result {
-    Ok(ctx.render(live_view! {
-        @match $notice {
-            Some(text) => {
-                div css=[styles::REGION] role=("status") {
-                    span { (text) }
-                    button css=[styles::DISMISS] onclick=(dismissed)
-                        aria_label=("Dismiss") { "×" }
-                }
-            },
-            None => {}
-        }
-    }).await?)
+    Ok(ctx
+        .render(live_view! {
+            @match $notice {
+                Some(text) => {
+                    div css=[styles::REGION] role=("status") {
+                        span { (text) }
+                        button css=[styles::DISMISS] onclick=(dismissed)
+                            aria_label=("Dismiss") { "×" }
+                    }
+                },
+                None => {}
+            }
+        })
+        .await?)
 }
 
 #[styles]

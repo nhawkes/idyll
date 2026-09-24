@@ -9,11 +9,11 @@ fn test_scope() -> (idyll::Runtime, idyll::Owner) {
 }
 
 use idyll::{
+    component,
     component::{report_to_log, spawn_live},
     driver::DomOp,
-    component, key, replay_component, live_view, CommandBufferDriver, Ctx, DomCommand, Event,
-    MessageLog,
-    MockDriver, Rect, ReplayInputs, Result, Runtime, Setup, MutableVec,
+    key, live_view, replay_component, CommandBufferDriver, Ctx, DomCommand, Event, MessageLog,
+    MockDriver, MutableVec, Rect, ReplayInputs, Result, Runtime, Setup,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,7 +50,9 @@ fn ir_html(template: &idyll::template::Template) -> String {
     use idyll::template::TplNode;
     fn write(nodes: &[TplNode], cursor: &mut usize, count: usize, out: &mut String) {
         for _ in 0..count {
-            let Some(node) = nodes.get(*cursor) else { return };
+            let Some(node) = nodes.get(*cursor) else {
+                return;
+            };
             *cursor += 1;
             match node {
                 TplNode::Text(t) => out.push_str(t),
@@ -83,7 +85,6 @@ fn count_ops(driver: &MockDriver, f: impl Fn(&DomOp) -> bool) -> usize {
     driver.log.iter().filter(|op| f(op)).count()
 }
 
-
 #[test]
 fn client_effect_runs_post_mount_and_emits_a_message() {
     #[derive(Debug)]
@@ -93,14 +94,15 @@ fn client_effect_runs_post_mount_and_emits_a_message() {
 
     async fn component(ctx: Ctx<Setup, Msg>) -> Result {
         let n = ctx.mutable_signal(0);
-    let n_v = n.read();
+        let n_v = n.read();
         let mut ctx = ctx
             // A real effect would read `localStorage` via the `Client` token;
             // here we just emit the result as a message (the loop stays pure).
             .client_effect(|_client, sender| async move {
                 sender.send(Msg::Loaded(42));
             })
-            .render(live_view! { div { span { ($n_v) } } }).await?;
+            .render(live_view! { div { span { ($n_v) } } })
+            .await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
             match msg {
@@ -119,8 +121,14 @@ fn client_effect_runs_post_mount_and_emits_a_message() {
     rt.flush(&mut driver); // DOM patch: span text -> "42"
 
     // Initial mount paints "0"; the post-mount effect drives it to "42".
-    assert_eq!(all_set_texts(&driver).first().map(String::as_str), Some("0"));
-    assert_eq!(all_set_texts(&driver).last().map(String::as_str), Some("42"));
+    assert_eq!(
+        all_set_texts(&driver).first().map(String::as_str),
+        Some("0")
+    );
+    assert_eq!(
+        all_set_texts(&driver).last().map(String::as_str),
+        Some("42")
+    );
 }
 
 #[test]
@@ -132,15 +140,17 @@ fn pure_handler_maps_event_to_a_message() {
 
     async fn component(ctx: Ctx<Setup, Msg>) -> Result {
         let n = ctx.mutable_signal(0);
-    let n_v = n.read();
+        let n_v = n.read();
         // Handlers are pure `Event -> Option<Msg>` — no `Client`, no effect. The click
         // becomes a message, so every state change flows through the (logged) loop.
-        let mut ctx = ctx.render(live_view! {
-            div {
-                button onclick=>(|_ev| Some(Msg::Bumped)) { "go" }
-                span { ($n_v) }
-            }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    button onclick=>(|_ev| Some(Msg::Bumped)) { "go" }
+                    span { ($n_v) }
+                }
+            })
+            .await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
             match msg {
@@ -244,7 +254,7 @@ fn replay_reconstructs_the_same_dom_from_the_same_message_log() {
 
     async fn counter(ctx: Ctx<Setup, Msg>) -> Result {
         let n = ctx.mutable_signal(0i32);
-    let n_v = n.read();
+        let n_v = n.read();
         let mut ctx = ctx.render(live_view! { output { ($n_v) } }).await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -306,7 +316,6 @@ fn dev_replay_component_feeds_messages_and_records_dom_patches() {
         Dec,
     }
 
-
     async fn component(ctx: Ctx<Setup, Msg>, start: i64) -> Result {
         let count = ctx.mutable_signal(start);
         let mut ctx = ctx.render(live_view! { span { $count } }).await?;
@@ -358,7 +367,7 @@ fn replaying_a_log_into_an_edited_component_reconstructs_state() {
     // v1: the original component.
     async fn v1(ctx: Ctx<Setup, Msg>, start: i64) -> Result {
         let count = ctx.mutable_signal(start);
-    let count_v = count.read();
+        let count_v = count.read();
         let mut ctx = ctx.render(live_view! { span { ($count_v) } }).await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -373,8 +382,10 @@ fn replaying_a_log_into_an_edited_component_reconstructs_state() {
     // label), identical message handling.
     async fn v2(ctx: Ctx<Setup, Msg>, start: i64) -> Result {
         let count = ctx.mutable_signal(start);
-    let count_v = count.read();
-        let mut ctx = ctx.render(live_view! { div { strong { "count: " } span { ($count_v) } } }).await?;
+        let count_v = count.read();
+        let mut ctx = ctx
+            .render(live_view! { div { strong { "count: " } span { ($count_v) } } })
+            .await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
             match msg {
@@ -387,7 +398,12 @@ fn replaying_a_log_into_an_edited_component_reconstructs_state() {
     // Original session: drive v1, capture the delivered message log.
     let mut rt1 = Runtime::new();
     let mut d1 = MockDriver::new();
-    let log = replay_component(&mut rt1, &mut d1, |ctx| v1(ctx, 10), [Msg::Inc, Msg::Inc, Msg::Dec]);
+    let log = replay_component(
+        &mut rt1,
+        &mut d1,
+        |ctx| v1(ctx, 10),
+        [Msg::Inc, Msg::Inc, Msg::Dec],
+    );
     let messages = log.decode::<Msg>().unwrap();
     assert_eq!(all_set_texts(&d1).last().map(String::as_str), Some("11"));
 
@@ -407,11 +423,12 @@ fn command_buffer_driver_records_replayed_component_commands() {
         Set(String),
     }
 
-
     async fn component(ctx: Ctx<Setup, Msg>) -> Result {
         let value = ctx.mutable_signal("initial".to_string());
         let value_for_view = value.read();
-        let mut ctx = ctx.render(live_view! { span { ($value_for_view) } }).await?;
+        let mut ctx = ctx
+            .render(live_view! { span { ($value_for_view) } })
+            .await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
             match msg {
@@ -471,7 +488,11 @@ fn counter_initial_render() {
     let mut rt = Runtime::new();
     let mut driver = MockDriver::new();
     let ctx: Ctx<Setup, CounterMsg> = rt.ctx::<CounterMsg>();
-    rt.spawn(spawn_live(|ctx| counter_component(ctx, 5i64), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| counter_component(ctx, 5i64),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     assert_eq!(all_set_texts(&driver), vec!["5"]);
@@ -483,9 +504,11 @@ fn component_trait_spawns_with_tuple_arguments() {
     enum Msg {}
 
     async fn label(ctx: Ctx<Setup, Msg>, prefix: &'static str, value: i32) -> Result {
-        let mut _ctx = ctx.render(live_view! {
-            span { (format!("{prefix}:{value}")) }
-        }).await?;
+        let mut _ctx = ctx
+            .render(live_view! {
+                span { (format!("{prefix}:{value}")) }
+            })
+            .await?;
         std::future::pending().await
     }
 
@@ -506,9 +529,11 @@ fn a_live_spawns_with_its_plain_arguments() {
     enum Msg {}
 
     async fn label(ctx: Ctx<Setup, Msg>, prefix: &'static str, value: i32) -> Result {
-        let mut _ctx = ctx.render(live_view! {
-            span { (format!("{prefix}:{value}")) }
-        }).await?;
+        let mut _ctx = ctx
+            .render(live_view! {
+                span { (format!("{prefix}:{value}")) }
+            })
+            .await?;
         std::future::pending().await
     }
 
@@ -577,9 +602,11 @@ fn delegated_event_mapper_delivers_messages() {
 
     rt.spawn(spawn_live(
         move |ctx: Ctx<Setup, Msg>| async move {
-            let mut ctx = ctx.render(live_view! {
-                input onkeydown=>(key::enter(|e: idyll::Event| Msg::Submit(e.value())))
-            }).await?;
+            let mut ctx = ctx
+                .render(live_view! {
+                    input onkeydown=>(key::enter(|e: idyll::Event| Msg::Submit(e.value())))
+                })
+                .await?;
             let (msg, _turn) = ctx.recv().await?;
             match msg {
                 Msg::Submit(value) => submitted_component.borrow_mut().push(value),
@@ -643,11 +670,13 @@ fn removing_branch_unregisters_event_listener() {
             let show = show_for_component.clone();
             let clicks = std::rc::Rc::clone(&clicks_for_component);
             async move {
-                let mut ctx = ctx.render(live_view! {
-                    @if ($show) {
-                        button onclick=>(|_| Msg::Clicked) { "click" }
-                    }
-                }).await?;
+                let mut ctx = ctx
+                    .render(live_view! {
+                        @if ($show) {
+                            button onclick=>(|_| Msg::Clicked) { "click" }
+                        }
+                    })
+                    .await?;
                 loop {
                     let (msg, _turn) = ctx.recv().await?;
                     match msg {
@@ -693,7 +722,11 @@ fn counter_increments_three_times() {
     let mut driver = MockDriver::new();
     let ctx: Ctx<Setup, CounterMsg> = rt.ctx::<CounterMsg>();
     let sender = ctx.inbox_sender();
-    rt.spawn(spawn_live(|ctx| counter_component(ctx, 0i64), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| counter_component(ctx, 0i64),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
 
@@ -801,7 +834,11 @@ fn counter_decrements_below_zero() {
     let mut driver = MockDriver::new();
     let ctx: Ctx<Setup, CounterMsg> = rt.ctx::<CounterMsg>();
     let sender = ctx.inbox_sender();
-    rt.spawn(spawn_live(|ctx| counter_component(ctx, 0i64), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| counter_component(ctx, 0i64),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
 
@@ -873,7 +910,10 @@ fn mutable_vec_push_and_remove() {
     v.remove(&idyll::Turn::for_test(), r1);
     assert_eq!(v.len(), 1);
     assert!(v.get(r1).is_none());
-    assert_eq!(v.get(r2).unwrap().now(&idyll::Turn::for_test()).clone(), "b");
+    assert_eq!(
+        v.get(r2).unwrap().now(&idyll::Turn::for_test()).clone(),
+        "b"
+    );
     // Removing a stale row is a no-op.
     assert!(!v.remove(&idyll::Turn::for_test(), r1));
 }
@@ -933,15 +973,17 @@ fn view_if_fragment_replaces_when_signal_changes() {
         |ctx: Ctx<Setup, Msg>| async move {
             let shown = ctx.mutable_signal(false);
             let shown_view = shown.read();
-            let mut ctx = ctx.render(live_view! {
-                div {
-                    @if ($shown_view) {
-                        span { "shown" }
-                    } else {
-                        span { "hidden" }
+            let mut ctx = ctx
+                .render(live_view! {
+                    div {
+                        @if ($shown_view) {
+                            span { "shown" }
+                        } else {
+                            span { "hidden" }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
@@ -988,18 +1030,20 @@ fn view_match_fragment_replaces_when_signal_changes() {
         |ctx: Ctx<Setup, Msg>| async move {
             let mode = ctx.mutable_signal(Mode::One);
             let mode_view = mode.read();
-            let mut ctx = ctx.render(live_view! {
-                div {
-                    @match (mode_view) {
-                        Mode::One => {
-                            span { ("one") }
-                        },
-                        Mode::Two(label) => {
-                            span { (label) }
-                        },
+            let mut ctx = ctx
+                .render(live_view! {
+                    div {
+                        @match (mode_view) {
+                            Mode::One => {
+                                span { ("one") }
+                            },
+                            Mode::Two(label) => {
+                                span { (label) }
+                            },
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
@@ -1022,10 +1066,7 @@ fn view_match_fragment_replaces_when_signal_changes() {
     assert_eq!(all_set_texts(&driver), vec!["one", "two"]);
     assert_eq!(
         all_fragment_html(&driver),
-        vec![
-            "<span></span>",
-            "<span></span>"
-        ]
+        vec!["<span></span>", "<span></span>"]
     );
 }
 
@@ -1048,15 +1089,17 @@ fn if_branch_binding_can_capture_outer_signal_handle() {
             let label = ctx.mutable_signal("alpha".to_string());
             let shown_view = shown.read();
             let label_view = label.read();
-            let mut ctx = ctx.render(live_view! {
-                div {
-                    @if ($shown_view) {
-                        span { ($label_view) }
-                    } else {
-                        span { "hidden" }
+            let mut ctx = ctx
+                .render(live_view! {
+                    div {
+                        @if ($shown_view) {
+                            span { ($label_view) }
+                        } else {
+                            span { "hidden" }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
@@ -1112,18 +1155,20 @@ fn match_arm_binding_can_capture_outer_signal_handle() {
             let label = ctx.mutable_signal("alpha".to_string());
             let mode_view = mode.read();
             let label_view = label.read();
-            let mut ctx = ctx.render(live_view! {
-                div {
-                    @match (mode_view) {
-                        Mode::Label => {
-                            span { ($label_view) }
-                        },
-                        Mode::Hidden => {
-                            span { "hidden" }
-                        },
+            let mut ctx = ctx
+                .render(live_view! {
+                    div {
+                        @match (mode_view) {
+                            Mode::Label => {
+                                span { ($label_view) }
+                            },
+                            Mode::Hidden => {
+                                span { "hidden" }
+                            },
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
@@ -1179,9 +1224,11 @@ fn replacing_match_branch_cancels_inline_child_task() {
 
     #[component]
     async fn Child(ctx: Ctx<Setup, ChildMsg>, clicks: std::rc::Rc<std::cell::Cell<u32>>) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            button onclick=>(|_| ChildMsg::Click) { "child" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button onclick=>(|_| ChildMsg::Click) { "child" }
+            })
+            .await?;
         loop {
             let (msg, _turn) = ctx.recv().await?;
             match msg {
@@ -1198,18 +1245,20 @@ fn replacing_match_branch_cancels_inline_child_task() {
         let mode_view = mode.read();
         let clicks_view = std::rc::Rc::clone(&clicks);
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @match (mode_view) {
-                    Mode::Child => {
-                        Child clicks=(clicks_view.clone())
-                    },
-                    Mode::Other => {
-                        span { "other" }
-                    },
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @match (mode_view) {
+                        Mode::Child => {
+                            Child clicks=(clicks_view.clone())
+                        },
+                        Mode::Other => {
+                            span { "other" }
+                        },
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -1226,7 +1275,11 @@ fn replacing_match_branch_cancels_inline_child_task() {
     let sender = ctx.inbox_sender();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
@@ -1273,18 +1326,20 @@ fn match_keep_detaches_without_destroying_subtree() {
         let mode = ctx.mutable_signal(Mode::Kept);
         let mode_view = mode.read();
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @match[keep] (mode_view) {
-                    Mode::Kept => {
-                        button onclick=>(|_| ParentMsg::Bump) { "kept" }
-                    },
-                    Mode::Other => {
-                        span { "other" }
-                    },
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @match[keep] (mode_view) {
+                        Mode::Kept => {
+                            button onclick=>(|_| ParentMsg::Bump) { "kept" }
+                        },
+                        Mode::Other => {
+                            span { "other" }
+                        },
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -1309,7 +1364,11 @@ fn match_keep_detaches_without_destroying_subtree() {
     let sender = ctx.inbox_sender();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     let kept_handler = driver.latest_handler().unwrap();
@@ -1359,13 +1418,15 @@ fn view_for_mutable_vec_mounts_initial_and_inserted_rows() {
             items.push(&idyll::Turn::for_test(), "b".to_string());
             let items_view = items.clone();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for (_row, text) in (items_view) {
-                        li { ($text) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for (_row, text) in (items_view) {
+                            li { ($text) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, _turn) = ctx.recv().await?;
@@ -1410,13 +1471,15 @@ fn removed_rows_free_their_minted_node_ids() {
             items.push(&idyll::Turn::for_test(), "c".to_string());
             let items_view = items.clone();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for (_row, text) in (items_view) {
-                        li { ($text) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for (_row, text) in (items_view) {
+                            li { ($text) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, _turn) = ctx.recv().await?;
@@ -1480,13 +1543,15 @@ fn view_for_mutable_vec_removes_and_moves_rows_by_row_anchor() {
             items.push(&idyll::Turn::for_test(), "b".to_string());
             let items_view = items.clone();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for (_row, text) in (items_view) {
-                        li { ($text) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for (_row, text) in (items_view) {
+                            li { ($text) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, _turn) = ctx.recv().await?;
@@ -1542,13 +1607,15 @@ fn view_for_mutable_vec_clear_removes_all_row_fragments() {
             items.push(&idyll::Turn::for_test(), "c".to_string());
             let items_view = items.clone();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for (_row, text) in (items_view) {
-                        li { ($text) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for (_row, text) in (items_view) {
+                            li { ($text) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, _turn) = ctx.recv().await?;
@@ -1657,9 +1724,11 @@ fn measure_binding_delivers_a_rect_to_the_inbox() {
         ctx: Ctx<Setup, Msg>,
         sink: std::rc::Rc<std::cell::Cell<Option<Rect>>>,
     ) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            div measure=>(|e| e.rect().map(Msg::Measured)) { "box" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                div measure=>(|e| e.rect().map(Msg::Measured)) { "box" }
+            })
+            .await?;
         loop {
             let (msg, _turn) = ctx.recv().await?;
             match msg {
@@ -1671,16 +1740,35 @@ fn measure_binding_delivers_a_rect_to_the_inbox() {
     let mut rt = Runtime::new();
     let mut driver = MockDriver::new();
     let ctx: Ctx<Setup, Msg> = rt.ctx::<Msg>();
-    rt.spawn(spawn_live(move |ctx| comp(ctx, measured_c), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| comp(ctx, measured_c),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
 
     let handler = driver.latest_handler().unwrap();
-    let rect = Rect { x: 10.0, y: 20.0, width: 200.0, height: 44.0 };
-    driver.fire(handler, Event { rect: Some(rect), ..Default::default() });
+    let rect = Rect {
+        x: 10.0,
+        y: 20.0,
+        width: 200.0,
+        height: 44.0,
+    };
+    driver.fire(
+        handler,
+        Event {
+            rect: Some(rect),
+            ..Default::default()
+        },
+    );
     rt.run_to_quiescence();
 
-    assert_eq!(measured.get(), Some(rect), "the measured rect must reach the inbox");
+    assert_eq!(
+        measured.get(),
+        Some(rect),
+        "the measured rect must reach the inbox"
+    );
 }
 
 #[test]
@@ -1701,7 +1789,8 @@ fn a_deep_component_tree_is_flat_one_task_per_component() {
                 Leaf label=("b")
                 Leaf label=("c")
             }
-        }).await?
+        })
+        .await?
         .finish()
         .await
     }
@@ -1714,7 +1803,9 @@ fn a_deep_component_tree_is_flat_one_task_per_component() {
     let mut driver = MockDriver::new();
     let ctx: Ctx<Setup, idyll::Never> = rt.ctx::<idyll::Never>();
     rt.spawn(spawn_live(
-        |ctx| <Top as idyll::component::Component>::run(ctx, TopRequired {}, TopOptional::default()),
+        |ctx| {
+            <Top as idyll::component::Component>::run(ctx, TopRequired {}, TopOptional::default())
+        },
         ctx,
         report_to_log,
     ));
@@ -1753,9 +1844,11 @@ fn profile_component_mount_cost_is_linear() {
                     items.push(&idyll::Turn::for_test(), i);
                 }
                 let items_view = items.clone();
-                let mut ctx = ctx.render(live_view! {
-                    div { @for (_row, r) in (items_view) { Leaf _row=(r) } }
-                }).await?;
+                let mut ctx = ctx
+                    .render(live_view! {
+                        div { @for (_row, r) in (items_view) { Leaf _row=(r) } }
+                    })
+                    .await?;
                 loop {
                     let _ = ctx.recv().await?;
                 }
@@ -1777,13 +1870,20 @@ fn profile_component_mount_cost_is_linear() {
     let mut prev: Option<(u32, std::time::Duration)> = None;
     for n in [16u32, 64, 256, 1024] {
         let (dt, tasks, ops) = mount_n(n);
-        assert_eq!(tasks, n as usize + 1, "{n} rows are {n} flat tasks plus the root");
+        assert_eq!(
+            tasks,
+            n as usize + 1,
+            "{n} rows are {n} flat tasks plus the root"
+        );
         let per = dt / n;
         let scale = prev.map(|(pn, pt)| {
             let ratio = dt.as_secs_f64() / pt.as_secs_f64();
             format!(" ({:.1}x for {:.0}x N)", ratio, n as f64 / pn as f64)
         });
-        println!("   {n:<6} {tasks:<6}  {ops:<8}  {dt:>9.2?}   {per:.3?}{}", scale.unwrap_or_default());
+        println!(
+            "   {n:<6} {tasks:<6}  {ops:<8}  {dt:>9.2?}   {per:.3?}{}",
+            scale.unwrap_or_default()
+        );
         prev = Some((n, dt));
     }
 }
@@ -1816,9 +1916,11 @@ fn profile_component_update_cost_is_linear() {
                 }
                 *slot_c.borrow_mut() = Some(items.clone());
                 let items_view = items.clone();
-                let mut ctx = ctx.render(live_view! {
-                    div { @for (_row, r) in (items_view) { Leaf row=(r) } }
-                }).await?;
+                let mut ctx = ctx
+                    .render(live_view! {
+                        div { @for (_row, r) in (items_view) { Leaf row=(r) } }
+                    })
+                    .await?;
                 loop {
                     let _ = ctx.recv().await?;
                 }
@@ -1831,7 +1933,10 @@ fn profile_component_update_cost_is_linear() {
         rt.run_to_quiescence();
         rt.flush(&mut driver);
 
-        let items = slot.borrow().clone().expect("the component published its list");
+        let items = slot
+            .borrow()
+            .clone()
+            .expect("the component published its list");
         let rows = items.snapshot_order();
         let start = std::time::Instant::now();
         for round in 1..=rounds {
@@ -1851,14 +1956,21 @@ fn profile_component_update_cost_is_linear() {
     let mut prev: Option<(u32, std::time::Duration)> = None;
     for n in [16u32, 64, 256, 1024] {
         let (dt, tasks) = refresh_n(n, rounds);
-        assert_eq!(tasks, n as usize + 1, "{n} rows stay {n} flat tasks plus the root under updates");
+        assert_eq!(
+            tasks,
+            n as usize + 1,
+            "{n} rows stay {n} flat tasks plus the root under updates"
+        );
         let updates = n * rounds;
         let per = dt / updates;
         let scale = prev.map(|(pn, pt)| {
             let ratio = dt.as_secs_f64() / pt.as_secs_f64();
             format!(" ({:.1}x for {:.0}x N)", ratio, n as f64 / pn as f64)
         });
-        println!("   {n:<6} {updates:<9}  {dt:>11.2?}   {per:.3?}{}", scale.unwrap_or_default());
+        println!(
+            "   {n:<6} {updates:<9}  {dt:>11.2?}   {per:.3?}{}",
+            scale.unwrap_or_default()
+        );
         prev = Some((n, dt));
     }
 }
@@ -1873,18 +1985,22 @@ fn inline_component_mount_renders_child_view() {
 
     #[component]
     async fn Child(ctx: Ctx<Setup, ChildMsg>, label: &'static str) -> Result {
-        let _ctx = ctx.render(live_view! {
-            span { (label) }
-        }).await?;
+        let _ctx = ctx
+            .render(live_view! {
+                span { (label) }
+            })
+            .await?;
         std::future::pending().await
     }
 
     async fn parent(ctx: Ctx<Setup, ParentMsg>) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            div {
-                Child label=("child")
-            }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    Child label=("child")
+                }
+            })
+            .await?;
         loop {
             let _ = ctx.recv().await?; // ParentMsg is uninhabited: drives the child, never yields
         }
@@ -1915,9 +2031,11 @@ fn inline_component_event_routes_to_child_inbox() {
 
     #[component]
     async fn Child(ctx: Ctx<Setup, ChildMsg>, clicks: std::rc::Rc<std::cell::Cell<u32>>) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            button onclick=>(|_| ChildMsg::Click) { "child" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button onclick=>(|_| ChildMsg::Click) { "child" }
+            })
+            .await?;
         let (msg, _turn) = ctx.recv().await?;
         match msg {
             ChildMsg::Click => clicks.set(clicks.get() + 1),
@@ -1929,11 +2047,13 @@ fn inline_component_event_routes_to_child_inbox() {
         ctx: Ctx<Setup, ParentMsg>,
         clicks: std::rc::Rc<std::cell::Cell<u32>>,
     ) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            div {
-                Child clicks=(clicks)
-            }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    Child clicks=(clicks)
+                }
+            })
+            .await?;
         loop {
             let _ = ctx.recv().await?; // ParentMsg is uninhabited: drives the child, never yields
         }
@@ -1945,7 +2065,11 @@ fn inline_component_event_routes_to_child_inbox() {
     let ctx: Ctx<Setup, ParentMsg> = rt.ctx::<ParentMsg>();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
@@ -1976,9 +2100,11 @@ fn removing_for_row_cancels_inline_child_task() {
         _text: idyll::Signal<String>,
         clicks: std::rc::Rc<std::cell::Cell<u32>>,
     ) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            button onclick=>(|_| ChildMsg::Click) { "child" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button onclick=>(|_| ChildMsg::Click) { "child" }
+            })
+            .await?;
         loop {
             let (msg, _turn) = ctx.recv().await?;
             match msg {
@@ -1996,15 +2122,17 @@ fn removing_for_row_cancels_inline_child_task() {
         let items_view = items.clone();
         let clicks_view = std::rc::Rc::clone(&clicks);
 
-        let mut ctx = ctx.render(live_view! {
-            ul {
-                @for (_row, text) in (items_view) {
-                    li {
-                        Child _text=(text) clicks=(clicks_view.clone())
+        let mut ctx = ctx
+            .render(live_view! {
+                ul {
+                    @for (_row, text) in (items_view) {
+                        li {
+                            Child _text=(text) clicks=(clicks_view.clone())
+                        }
                     }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, _turn) = ctx.recv().await?;
@@ -2023,7 +2151,11 @@ fn removing_for_row_cancels_inline_child_task() {
     let sender = ctx.inbox_sender();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
@@ -2057,9 +2189,11 @@ fn replacing_if_branch_cancels_inline_child_task() {
 
     #[component]
     async fn Child(ctx: Ctx<Setup, ChildMsg>, clicks: std::rc::Rc<std::cell::Cell<u32>>) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            button onclick=>(|_| ChildMsg::Click) { "child" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button onclick=>(|_| ChildMsg::Click) { "child" }
+            })
+            .await?;
         loop {
             let (msg, _turn) = ctx.recv().await?;
             match msg {
@@ -2076,15 +2210,17 @@ fn replacing_if_branch_cancels_inline_child_task() {
         let shown_view = shown.read();
         let clicks_view = std::rc::Rc::clone(&clicks);
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @if ($shown_view) {
-                    Child clicks=(clicks_view.clone())
-                } else {
-                    span { "hidden" }
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @if ($shown_view) {
+                        Child clicks=(clicks_view.clone())
+                    } else {
+                        span { "hidden" }
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -2101,7 +2237,11 @@ fn replacing_if_branch_cancels_inline_child_task() {
     let sender = ctx.inbox_sender();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
@@ -2133,9 +2273,11 @@ fn on_unmount_runs_cleanup_when_inline_child_scope_is_removed() {
         ctx.on_unmount(async move {
             cleaned.set(true);
         });
-        let mut ctx = ctx.render(live_view! {
-            span { "child" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                span { "child" }
+            })
+            .await?;
         let _ = ctx.recv().await?;
         std::future::pending().await
     }
@@ -2148,13 +2290,15 @@ fn on_unmount_runs_cleanup_when_inline_child_scope_is_removed() {
         let shown_view = shown.read();
         let cleaned_view = std::rc::Rc::clone(&cleaned);
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @if ($shown_view) {
-                    Child cleaned=(cleaned_view.clone())
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @if ($shown_view) {
+                        Child cleaned=(cleaned_view.clone())
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -2171,7 +2315,11 @@ fn on_unmount_runs_cleanup_when_inline_child_scope_is_removed() {
     let sender = ctx.inbox_sender();
 
     let cleaned_for_parent = std::rc::Rc::clone(&cleaned);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, cleaned_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, cleaned_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     assert!(!cleaned.get());
@@ -2196,9 +2344,11 @@ fn on_unmount_waits_for_unmount_after_render_and_return() {
         ctx.on_unmount(async move {
             cleaned.set(true);
         });
-        let _ctx = ctx.render(live_view! {
-            span { "child" }
-        }).await?;
+        let _ctx = ctx
+            .render(live_view! {
+                span { "child" }
+            })
+            .await?;
         std::future::pending().await
     }
 
@@ -2210,13 +2360,15 @@ fn on_unmount_waits_for_unmount_after_render_and_return() {
         let shown_view = shown.read();
         let cleaned_view = std::rc::Rc::clone(&cleaned);
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @if ($shown_view) {
-                    Child cleaned=(cleaned_view.clone())
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @if ($shown_view) {
+                        Child cleaned=(cleaned_view.clone())
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -2233,7 +2385,11 @@ fn on_unmount_waits_for_unmount_after_render_and_return() {
     let sender = ctx.inbox_sender();
 
     let cleaned_for_parent = std::rc::Rc::clone(&cleaned);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, cleaned_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, cleaned_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
@@ -2267,15 +2423,17 @@ fn if_keep_detaches_without_destroying_subtree() {
         let shown = ctx.mutable_signal(true);
         let shown_view = shown.read();
 
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @if[keep] ($shown_view) {
-                    button onclick=>(|_| ParentMsg::Bump) { "kept" }
-                } else {
-                    span { "hidden" }
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @if[keep] ($shown_view) {
+                        button onclick=>(|_| ParentMsg::Bump) { "kept" }
+                    } else {
+                        span { "hidden" }
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
 
         loop {
             let (msg, turn) = ctx.recv().await?;
@@ -2293,7 +2451,11 @@ fn if_keep_detaches_without_destroying_subtree() {
     let sender = ctx.inbox_sender();
 
     let clicks_for_parent = std::rc::Rc::clone(&clicks);
-    rt.spawn(spawn_live(move |ctx| parent(ctx, clicks_for_parent), ctx, report_to_log));
+    rt.spawn(spawn_live(
+        move |ctx| parent(ctx, clicks_for_parent),
+        ctx,
+        report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     let kept_handler = driver.latest_handler().unwrap();
@@ -2355,21 +2517,26 @@ fn view_for_keyed_signal_updates_matched_rows_in_place() {
             }]);
             let results_view = results.read();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for hit in (results_view) [key = hit.id] {
-                        li { ($hit.title.clone()) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for hit in (results_view) [key = hit.id] {
+                            li { ($hit.title.clone()) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
-                    Msg::Replace => results.set(&turn, vec![Hit {
-                        id: 1,
-                        title: "beta".to_string(),
-                    }]),
+                    Msg::Replace => results.set(
+                        &turn,
+                        vec![Hit {
+                            id: 1,
+                            title: "beta".to_string(),
+                        }],
+                    ),
                 }
             }
         },
@@ -2429,27 +2596,32 @@ fn view_for_keyed_signal_inserts_removes_and_moves_by_key() {
             ]);
             let results_view = results.read();
 
-            let mut ctx = ctx.render(live_view! {
-                ul {
-                    @for hit in (results_view) [key = hit.id] {
-                        li { ($hit.title.clone()) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    ul {
+                        @for hit in (results_view) [key = hit.id] {
+                            li { ($hit.title.clone()) }
+                        }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, turn) = ctx.recv().await?;
                 match msg {
-                    Msg::Replace => results.set(&turn, vec![
-                        Hit {
-                            id: 2,
-                            title: "two updated".to_string(),
-                        },
-                        Hit {
-                            id: 3,
-                            title: "three".to_string(),
-                        },
-                    ]),
+                    Msg::Replace => results.set(
+                        &turn,
+                        vec![
+                            Hit {
+                                id: 2,
+                                title: "two updated".to_string(),
+                            },
+                            Hit {
+                                id: 3,
+                                title: "three".to_string(),
+                            },
+                        ],
+                    ),
                 }
             }
         },
@@ -2484,19 +2656,23 @@ fn inline_component_inherits_parent_context() {
     #[component]
     async fn Child(ctx: Ctx<Setup, ()>) -> Result {
         let inherited = *ctx.use_context::<u32>().unwrap();
-        let _ctx = ctx.render(live_view! {
-            span { (inherited) }
-        }).await?;
+        let _ctx = ctx
+            .render(live_view! {
+                span { (inherited) }
+            })
+            .await?;
         std::future::pending().await
     }
 
     async fn parent(ctx: Ctx<Setup, ParentMsg>) -> Result {
         ctx.provide::<u32>(123);
-        let mut ctx = ctx.render(live_view! {
-            div {
-                Child
-            }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    Child
+                }
+            })
+            .await?;
         loop {
             let _ = ctx.recv().await?; // ParentMsg is uninhabited: drives the child, never yields
         }
@@ -2523,9 +2699,11 @@ fn inline_component_in_for_scope_inherits_parent_context() {
     #[component]
     async fn Child(ctx: Ctx<Setup, ()>, text: idyll::Signal<String>) -> Result {
         let inherited = *ctx.use_context::<u32>().unwrap();
-        let _ctx = ctx.render(live_view! {
-            span { (format!("{}:{}", inherited, $text)) }
-        }).await?;
+        let _ctx = ctx
+            .render(live_view! {
+                span { (format!("{}:{}", inherited, $text)) }
+            })
+            .await?;
         std::future::pending().await
     }
 
@@ -2534,15 +2712,17 @@ fn inline_component_in_for_scope_inherits_parent_context() {
         let items = ctx.mutable_vec();
         items.push(&idyll::Turn::for_test(), "row".to_string());
         let items_view = items.clone();
-        let mut ctx = ctx.render(live_view! {
-            ul {
-                @for (_row, text) in (items_view) {
-                    li {
-                        Child text=(text)
+        let mut ctx = ctx
+            .render(live_view! {
+                ul {
+                    @for (_row, text) in (items_view) {
+                        li {
+                            Child text=(text)
+                        }
                     }
                 }
-            }
-        }).await?;
+            })
+            .await?;
         loop {
             let _ = ctx.recv().await?; // ParentMsg is uninhabited: drives the rows, never yields
         }
@@ -2569,9 +2749,11 @@ fn inline_component_in_branch_scope_inherits_parent_context() {
     #[component]
     async fn Child(ctx: Ctx<Setup, ()>) -> Result {
         let inherited = *ctx.use_context::<u32>().unwrap();
-        let _ctx = ctx.render(live_view! {
-            span { (inherited) }
-        }).await?;
+        let _ctx = ctx
+            .render(live_view! {
+                span { (inherited) }
+            })
+            .await?;
         std::future::pending().await
     }
 
@@ -2579,13 +2761,15 @@ fn inline_component_in_branch_scope_inherits_parent_context() {
         ctx.provide::<u32>(55);
         let shown = ctx.mutable_signal(true);
         let shown_view = shown.read();
-        let mut ctx = ctx.render(live_view! {
-            div {
-                @if ($shown_view) {
-                    Child
+        let mut ctx = ctx
+            .render(live_view! {
+                div {
+                    @if ($shown_view) {
+                        Child
+                    }
                 }
-            }
-        }).await?;
+            })
+            .await?;
         loop {
             let _ = ctx.recv().await?; // ParentMsg is uninhabited: drives the arm, never yields
         }
@@ -2743,9 +2927,11 @@ fn a_recorded_session_with_absorbs_replays_identically() {
             },
         );
         *handles.borrow_mut() = Some((ctx.record_messages(), sink));
-        let mut ctx = ctx.render(live_view! {
-            span { ($store_view) ":" ($clicks_view) }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                span { ($store_view) ":" ($clicks_view) }
+            })
+            .await?;
         loop {
             let (msg, turn) = ctx.recv().await?;
             match msg {
@@ -2763,7 +2949,11 @@ fn a_recorded_session_with_absorbs_replays_identically() {
         let ctx: Ctx<Setup, Msg> = rt.ctx::<Msg>();
         let sender = ctx.inbox_sender();
         let handles_for_owner = Rc::clone(&handles);
-        rt.spawn(spawn_live(move |ctx| owner(ctx, handles_for_owner), ctx, report_to_log));
+        rt.spawn(spawn_live(
+            move |ctx| owner(ctx, handles_for_owner),
+            ctx,
+            report_to_log,
+        ));
         rt.run_once();
         rt.process_pending_view(&mut driver);
         rt.flush(&mut driver);
@@ -2811,7 +3001,10 @@ fn a_recorded_session_with_absorbs_replays_identically() {
         }
     });
 
-    assert_eq!(replayed_texts, live_texts, "the fold reconstructs from the log");
+    assert_eq!(
+        replayed_texts, live_texts,
+        "the fold reconstructs from the log"
+    );
 }
 
 // ── Static-paint detection ───────────────────────────
@@ -2824,7 +3017,10 @@ fn a_recorded_session_with_absorbs_replays_identically() {
 #[test]
 fn a_pure_paint_island_reports_static() {
     async fn component(ctx: Ctx<Setup, idyll::Never>) -> Result {
-        ctx.render(live_view! { div { span { "hello" } } }).await?.finish().await
+        ctx.render(live_view! { div { span { "hello" } } })
+            .await?
+            .finish()
+            .await
     }
 
     let mut driver = MockDriver::new();
@@ -2836,7 +3032,10 @@ fn a_pure_paint_island_reports_static() {
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
 
-    assert!(frame.paint_is_static(), "no client work, no external read — a pure paint");
+    assert!(
+        frame.paint_is_static(),
+        "no client work, no external read — a pure paint"
+    );
 }
 
 #[test]
@@ -2847,9 +3046,11 @@ fn a_listener_disqualifies_the_static_paint() {
     }
 
     async fn component(ctx: Ctx<Setup, Msg>) -> Result {
-        let mut ctx = ctx.render(live_view! {
-            button onclick=>(|_ev| Some(Msg::Bumped)) { "go" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button onclick=>(|_ev| Some(Msg::Bumped)) { "go" }
+            })
+            .await?;
         loop {
             let (msg, _turn) = ctx.recv().await?;
             match msg {
@@ -2867,7 +3068,10 @@ fn a_listener_disqualifies_the_static_paint() {
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
 
-    assert!(!frame.paint_is_static(), "a DOM listener needs the reducer live on the client");
+    assert!(
+        !frame.paint_is_static(),
+        "a DOM listener needs the reducer live on the client"
+    );
 }
 
 /// A `painting=(…)` binding, against the whole of what it promises: reactivity is per
@@ -2881,7 +3085,12 @@ fn a_canvas_paints_the_layers_whose_shapes_moved_and_disqualifies_the_static_pai
 
     fn wire(ink: &str) -> Shape {
         Shape {
-            curve: Curve { from: (0.0, 0.0), c1: (1.0, 0.0), c2: (2.0, 1.0), to: (3.0, 1.0) },
+            curve: Curve {
+                from: (0.0, 0.0),
+                c1: (1.0, 0.0),
+                c2: (2.0, 1.0),
+                to: (3.0, 1.0),
+            },
             span: (0.0, 1.0),
             ink: ink.to_string(),
             width: 1.5,
@@ -2938,7 +3147,11 @@ fn a_canvas_paints_the_layers_whose_shapes_moved_and_disqualifies_the_static_pai
     };
 
     let mount = painted(&driver);
-    assert_eq!(mount.len(), 1, "the mount is one command, not one per shape");
+    assert_eq!(
+        mount.len(),
+        1,
+        "the mount is one command, not one per shape"
+    );
     assert_eq!(mount[0].0, 2, "two layers, composited in row order");
     assert_eq!(
         mount[0].1,
@@ -2969,19 +3182,27 @@ fn a_canvas_paints_the_layers_whose_shapes_moved_and_disqualifies_the_static_pai
     lit.span = (0.25, 0.75);
     assert_eq!(
         moved[0].1,
-        [idyll::canvas::LayerDelta { layer: 1, slots: vec![(0, lit)], len: 1 }],
+        [idyll::canvas::LayerDelta {
+            layer: 1,
+            slots: vec![(0, lit)],
+            len: 1
+        }],
         "only the layer whose shape was written says anything",
     );
 
     driver.log.clear();
     rt.flush(&mut driver);
     rt.run_to_quiescence();
-    assert!(painted(&driver).is_empty(), "a frame nobody wrote crosses as nothing");
+    assert!(
+        painted(&driver).is_empty(),
+        "a frame nobody wrote crosses as nothing"
+    );
 
-    assert!(!frame.paint_is_static(), "a picture has no served HTML to adopt");
+    assert!(
+        !frame.paint_is_static(),
+        "a picture has no served HTML to adopt"
+    );
 }
-
-
 
 #[test]
 fn reading_an_absent_context_disqualifies_the_static_paint() {
@@ -3002,7 +3223,10 @@ fn reading_an_absent_context_disqualifies_the_static_paint() {
     rt.process_pending_view(&mut driver);
     rt.run_to_quiescence();
 
-    assert!(!frame.paint_is_static(), "an absent context read is an external dependency");
+    assert!(
+        !frame.paint_is_static(),
+        "an absent context read is an external dependency"
+    );
 }
 
 /// The teardown-ordering pin: unmounting a non-keep branch that embeds a component
@@ -3014,7 +3238,10 @@ fn reading_an_absent_context_disqualifies_the_static_paint() {
 fn branch_teardown_with_an_embedded_component_folds_cleanly() {
     #[component]
     async fn Inner(ctx: Ctx<Setup, idyll::Never>) -> Result {
-        ctx.render(live_view! { p { ("inner content") } }).await?.finish().await
+        ctx.render(live_view! { p { ("inner content") } })
+            .await?
+            .finish()
+            .await
     }
 
     let mut rt = Runtime::new();
@@ -3084,17 +3311,19 @@ fn for_rows_inside_a_branch_are_reclaimed_when_the_branch_swaps() {
             let shown = listed.read();
             let rows = ctx.constant(vec![1u32, 2, 3]);
 
-            let mut ctx = ctx.render(live_view! {
-                div {
-                    @if ($shown) {
-                        @for n in (rows) [key = *n] {
-                            span { ($n.to_string()) }
+            let mut ctx = ctx
+                .render(live_view! {
+                    div {
+                        @if ($shown) {
+                            @for n in (rows) [key = *n] {
+                                span { ($n.to_string()) }
+                            }
+                        } else {
+                            em { "empty" }
                         }
-                    } else {
-                        em { "empty" }
                     }
-                }
-            }).await?;
+                })
+                .await?;
 
             loop {
                 let (msg, turn) = ctx.recv().await?;
@@ -3120,7 +3349,10 @@ fn for_rows_inside_a_branch_are_reclaimed_when_the_branch_swaps() {
         )
     };
     let (mounts_first, removes_first) = census(&driver);
-    assert!(mounts_first >= 3, "the arm mounted its rows: {mounts_first}");
+    assert!(
+        mounts_first >= 3,
+        "the arm mounted its rows: {mounts_first}"
+    );
 
     let mut history = vec![(mounts_first, removes_first)];
     for _ in 0..4 {
@@ -3137,9 +3369,15 @@ fn for_rows_inside_a_branch_are_reclaimed_when_the_branch_swaps() {
     // floor on every cycle, which is exactly what this regressed on.
     let live: Vec<usize> = history.iter().map(|(m, r)| m - r).collect();
     for (i, &n) in live.iter().enumerate() {
-        assert!(n <= live[0], "no swap leaves more live than the first arm did: {live:?}");
+        assert!(
+            n <= live[0],
+            "no swap leaves more live than the first arm did: {live:?}"
+        );
         if i % 2 == 0 {
-            assert_eq!(n, live[0], "back on the list arm, one arm's worth is live: {live:?}");
+            assert_eq!(
+                n, live[0],
+                "back on the list arm, one arm's worth is live: {live:?}"
+            );
         }
     }
     assert!(

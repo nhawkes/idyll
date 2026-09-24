@@ -7,7 +7,7 @@
 //! swaps the arm. This is the one place route-as-a-signal is true: the mount
 //! persists across navigations, so the route genuinely changes under it.
 
-use idyll::{view, live_view, Ctx, Never, Setup};
+use idyll::{live_view, view, Ctx, Never, Setup};
 use idyll_data::{fragment, query, Frag, Preloaded, Store};
 
 fragment! { TodoItem on Todo { id, text, done } }
@@ -90,7 +90,9 @@ pub async fn app(ctx: Ctx<Setup, Msg>, seed: PageSeed) -> idyll::Result {
         let (msg, turn) = ctx.recv().await?;
         match msg {
             // Success arrives as data through the store; failure faults the live.
-            Msg::Add => turn.mutate::<AddTodoOp>(AddTodoOpVars { text: "New todo".into() }),
+            Msg::Add => turn.mutate::<AddTodoOp>(AddTodoOpVars {
+                text: "New todo".into(),
+            }),
             Msg::Toggle(id) => turn.mutate::<ToggleTodoOp>(ToggleTodoOpVars { id }),
             Msg::Navigate(path) => turn.navigate::<RouteQuery>(path),
         }
@@ -109,10 +111,12 @@ pub async fn page(ctx: Ctx<Setup, Never>, _seed: PageSeed) -> idyll::Result {
 
 /// Document-head content.
 pub async fn head(ctx: Ctx<Setup, Never>, _seed: PageSeed) -> idyll::Result {
-    Ok(ctx.render_content(view! {
-        meta charset=("utf-8")
-        meta name=("viewport") content=("width=device-width, initial-scale=1")
-    }).await?)
+    Ok(ctx
+        .render_content(view! {
+            meta charset=("utf-8")
+            meta name=("viewport") content=("width=device-width, initial-scale=1")
+        })
+        .await?)
 }
 
 idyll::guest! {

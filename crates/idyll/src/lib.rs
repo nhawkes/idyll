@@ -57,13 +57,13 @@ pub mod inbox;
 pub mod lifecycle;
 pub mod live;
 pub mod live_driver;
+pub mod live_view;
 pub mod mutate;
 pub mod owner;
 pub mod runtime;
 pub mod signal;
 pub mod slot;
 pub mod template;
-pub mod live_view;
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
@@ -74,9 +74,8 @@ pub use capability::Client;
 pub use component::{mount_child, spawn_child, Component};
 pub use ctx::{ContextHandle, Ctx, Live, Reducer, RenderScope, SeedSink, Setup};
 pub use dev::{
-    ABSORB_TY,
-    replay_component, MessageLog, MessageRecord, ReplayInputError,
-    ReplayInputKind, ReplayInputRecord, ReplayInputs,
+    replay_component, MessageLog, MessageRecord, ReplayInputError, ReplayInputKind,
+    ReplayInputRecord, ReplayInputs, ABSORB_TY,
 };
 pub use driver::{
     CommandBufferDriver, DomCommand, DomDriver, MockDriver, RequestError, UnknownTemplateId,
@@ -86,23 +85,23 @@ pub use html::{
     LIVE_WRAPPER_CLOSE,
 };
 pub use inbox::InboxSender;
+pub use live_view::{
+    key, render_kind_of, Event, LiveView, Rect, RenderInto, RenderKind, Rendered, SlotKind,
+    ViewCapture,
+};
 pub use mutate::{Mutation, MutationError, NavigateError, OpHash, Query};
 pub use owner::{Owner, OwnerId};
 pub use runtime::{
     fresh_child_id, ChildId, FlushBudget, FlushStatus, MountGuard, Runtime, RuntimeCore,
 };
 pub use signal::computed::Computed;
-pub use slot::{Slot, SlotGuard};
 pub use signal::reaction::Reaction;
 pub use signal::vec::{KeyedVec, MutableVec, Row, SignalVec, SpliceOp};
 pub use signal::{
-    deferred, Cx, FlushStep, Lane,
-    InTurn, ListenGuard, Signal, MutableSignal, SignalId, Turn,
+    deferred, Cx, FlushStep, InTurn, Lane, ListenGuard, MutableSignal, Signal, SignalId, Turn,
 };
-pub use template::{View, StyleRule};
-pub use live_view::{
-    key, render_kind_of, Event, LiveView, Rect, Rendered, RenderInto, RenderKind, SlotKind, ViewCapture,
-};
+pub use slot::{Slot, SlotGuard};
+pub use template::{StyleRule, View};
 
 // Re-export Idyll's procedural macros.
 pub use idyll_macros::{component, guest, live_view, view};

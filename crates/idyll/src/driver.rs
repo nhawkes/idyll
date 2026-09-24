@@ -373,7 +373,9 @@ impl std::error::Error for RequestError {}
 impl From<DomOp> for DomCommand {
     fn from(value: DomOp) -> Self {
         match value {
-            DomOp::MountRoot { template } => DomCommand::MountRoot { template_id: template },
+            DomOp::MountRoot { template } => DomCommand::MountRoot {
+                template_id: template,
+            },
             DomOp::SetText { node_id, text } => DomCommand::SetText { node_id, text },
             DomOp::SetAttr {
                 node_id,
@@ -406,12 +408,20 @@ impl From<DomOp> for DomCommand {
                 name: name.into(),
                 value,
             },
-            DomOp::MountFragment { anchor_id, template } => {
-                DomCommand::MountFragment { anchor_id, template }
-            }
-            DomOp::ReplaceFragment { anchor_id, template } => {
-                DomCommand::ReplaceFragment { anchor_id, template }
-            }
+            DomOp::MountFragment {
+                anchor_id,
+                template,
+            } => DomCommand::MountFragment {
+                anchor_id,
+                template,
+            },
+            DomOp::ReplaceFragment {
+                anchor_id,
+                template,
+            } => DomCommand::ReplaceFragment {
+                anchor_id,
+                template,
+            },
             DomOp::RemoveFragment { anchor_id } => DomCommand::RemoveFragment { anchor_id },
             DomOp::DetachFragment { anchor_id } => DomCommand::DetachFragment { anchor_id },
             DomOp::AttachFragment { anchor_id } => DomCommand::AttachFragment { anchor_id },
@@ -440,27 +450,60 @@ impl From<DomOp> for DomCommand {
                 event_type: event_type.into(),
                 handler_id,
             },
-            DomOp::WatchMeasure { node_id, handler_id } => {
-                DomCommand::WatchMeasure { node_id, handler_id }
-            }
-            DomOp::UnwatchMeasure { node_id, handler_id } => {
-                DomCommand::UnwatchMeasure { node_id, handler_id }
-            }
-            DomOp::Paint { node_id, layers, deltas } => {
+            DomOp::WatchMeasure {
+                node_id,
+                handler_id,
+            } => DomCommand::WatchMeasure {
+                node_id,
+                handler_id,
+            },
+            DomOp::UnwatchMeasure {
+                node_id,
+                handler_id,
+            } => DomCommand::UnwatchMeasure {
+                node_id,
+                handler_id,
+            },
+            DomOp::Paint {
+                node_id,
+                layers,
+                deltas,
+            } => {
                 let (inks, deltas) = crate::canvas::flatten(&deltas);
-                DomCommand::Paint { node_id, layers, inks, deltas }
+                DomCommand::Paint {
+                    node_id,
+                    layers,
+                    inks,
+                    deltas,
+                }
             }
-            DomOp::ServerRequest { request_id, op, args } => {
-                DomCommand::ServerRequest { request_id, op, args }
-            }
-            DomOp::Navigate { request_id, op, path } => {
-                DomCommand::Navigate { request_id, op, path }
-            }
+            DomOp::ServerRequest {
+                request_id,
+                op,
+                args,
+            } => DomCommand::ServerRequest {
+                request_id,
+                op,
+                args,
+            },
+            DomOp::Navigate {
+                request_id,
+                op,
+                path,
+            } => DomCommand::Navigate {
+                request_id,
+                op,
+                path,
+            },
             DomOp::WatchNavigation { handler_id } => DomCommand::WatchNavigation { handler_id },
             DomOp::WatchSize { handler_id } => DomCommand::WatchSize { handler_id },
-            DomOp::StartTicks { handler_id, interval_ms } => {
-                DomCommand::StartTicks { handler_id, interval_ms }
-            }
+            DomOp::StartTicks {
+                handler_id,
+                interval_ms,
+            } => DomCommand::StartTicks {
+                handler_id,
+                interval_ms,
+            },
             DomOp::StopTicks { handler_id } => DomCommand::StopTicks { handler_id },
             DomOp::FreeNodes { node_ids } => DomCommand::FreeNodes { node_ids },
         }
@@ -700,8 +743,10 @@ impl CommandBufferDriver {
             return Err(UnknownTemplateId { template_id });
         };
         *existing = template.clone();
-        self.commands
-            .push(DomCommand::ReplaceTemplate { template_id, template });
+        self.commands.push(DomCommand::ReplaceTemplate {
+            template_id,
+            template,
+        });
         Ok(())
     }
 
@@ -752,8 +797,10 @@ impl DomDriver for CommandBufferDriver {
         let id = TemplateId(self.next_template_id);
         self.next_template_id += 1;
         self.templates.push(template.clone());
-        self.commands
-            .push(DomCommand::ReplaceTemplate { template_id: id, template });
+        self.commands.push(DomCommand::ReplaceTemplate {
+            template_id: id,
+            template,
+        });
         id
     }
 
@@ -877,15 +924,23 @@ mod tests {
         let mut driver = CommandBufferDriver::new();
         let template_id = driver.register_template(tpl("p"));
 
-        driver.replace_template(template_id, tpl("section")).unwrap();
+        driver
+            .replace_template(template_id, tpl("section"))
+            .unwrap();
 
         assert_eq!(driver.templates, vec![tpl("section")]);
         // Registration itself is in-band (self-contained stream), then the replacement.
         assert_eq!(
             driver.commands(),
             &[
-                DomCommand::ReplaceTemplate { template_id, template: tpl("p") },
-                DomCommand::ReplaceTemplate { template_id, template: tpl("section") },
+                DomCommand::ReplaceTemplate {
+                    template_id,
+                    template: tpl("p")
+                },
+                DomCommand::ReplaceTemplate {
+                    template_id,
+                    template: tpl("section")
+                },
             ]
         );
     }
@@ -894,7 +949,9 @@ mod tests {
     fn command_buffer_driver_rejects_unknown_template_replacement() {
         let mut driver = CommandBufferDriver::new();
 
-        let err = driver.replace_template(TemplateId(9), tpl("p")).unwrap_err();
+        let err = driver
+            .replace_template(TemplateId(9), tpl("p"))
+            .unwrap_err();
 
         assert_eq!(
             err,

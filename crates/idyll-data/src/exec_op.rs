@@ -30,12 +30,15 @@ use crate::schema::{FieldType, MutationEntry, RootEntry, Schema};
 use crate::{BoxError, Node, Seed};
 
 type BoxFut<T> = Pin<Box<dyn Future<Output = T> + Send>>;
-type RootThunk<Src> =
-    Arc<dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync>;
-type FetchThunk<Src> =
-    Arc<dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync>;
-type MutationThunk<Src> =
-    Arc<dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync>;
+type RootThunk<Src> = Arc<
+    dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync,
+>;
+type FetchThunk<Src> = Arc<
+    dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync,
+>;
+type MutationThunk<Src> = Arc<
+    dyn Fn(Src, serde_json::Value) -> BoxFut<Result<serde_json::Value, BoxError>> + Send + Sync,
+>;
 
 /// The app's **explicit resolver table** — the server's whole execution surface: root
 /// name → resolver, Node type → fetcher, mutation name → handler. Registered once next
@@ -195,7 +198,10 @@ where
 
 impl<Src: Clone + Send + Sync + 'static> AppRoot<Src> {
     /// Attach the app's content mapping (see [`Resolvers::content`]).
-    pub fn content(mut self, mapping: impl Fn(&str) -> idyll::View + Send + Sync + 'static) -> Self {
+    pub fn content(
+        mut self,
+        mapping: impl Fn(&str) -> idyll::View + Send + Sync + 'static,
+    ) -> Self {
         self.resolvers = self.resolvers.content(mapping);
         self
     }
@@ -223,7 +229,10 @@ impl<Src: Clone + Send + Sync + 'static> Resolvers<Src> {
 
     /// Register the app's content mapping (markdown -> View IR). A `Content` field
     /// executed without one is a loud operation error, never a silent pass-through.
-    pub fn content(mut self, mapping: impl Fn(&str) -> idyll::View + Send + Sync + 'static) -> Self {
+    pub fn content(
+        mut self,
+        mapping: impl Fn(&str) -> idyll::View + Send + Sync + 'static,
+    ) -> Self {
         self.content = Some(Arc::new(mapping));
         self
     }
@@ -246,9 +255,9 @@ impl<Src: Clone + Send + Sync + 'static> Resolvers<Src> {
             Arc::new(|src, id_json| {
                 let id: Result<T::Id, _> = serde_json::from_value(id_json);
                 match id {
-                    Ok(id) => Box::pin(async move {
-                        Ok(serde_json::to_value(T::fetch(src, id).await?)?)
-                    }),
+                    Ok(id) => {
+                        Box::pin(async move { Ok(serde_json::to_value(T::fetch(src, id).await?)?) })
+                    }
                     Err(err) => Box::pin(std::future::ready(Err(BoxError::from(err)))),
                 }
             }),
@@ -290,7 +299,9 @@ impl<Src: Clone + Send + Sync + 'static> Resolvers<Src> {
 pub fn validate_mutation(schema: &Schema, m: &CanonMutation) -> Result<(), ValidateError> {
     let def = schema
         .mutation_def(&m.mutation)
-        .ok_or_else(|| ValidateError::UnknownMutation { mutation: m.mutation.clone() })?;
+        .ok_or_else(|| ValidateError::UnknownMutation {
+            mutation: m.mutation.clone(),
+        })?;
     for arg in &m.args {
         if !def.args.iter().any(|declared| declared.name == *arg) {
             return Err(ValidateError::UnknownArgument {
@@ -341,14 +352,18 @@ impl<Src: Clone + Send + Sync + 'static> Default for Resolvers<Src> {
 #[derive(Debug)]
 pub enum ExecError {
     /// A single root yielded no record for these variables.
-    Absent { root: String },
+    Absent {
+        root: String,
+    },
     Fault(BoxError),
 }
 
 impl std::fmt::Display for ExecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExecError::Absent { root } => write!(f, "root `{root}` has no record for these variables"),
+            ExecError::Absent { root } => {
+                write!(f, "root `{root}` has no record for these variables")
+            }
             ExecError::Fault(err) => err.fmt(f),
         }
     }
@@ -407,7 +422,9 @@ pub fn validate_registered<Src: Clone + Send + Sync + 'static>(
             continue; // shape is `validate`'s job; it runs first
         };
         if !resolvers.has_root(field) {
-            return Err(ValidateError::MissingResolver { root: field.clone() });
+            return Err(ValidateError::MissingResolver {
+                root: field.clone(),
+            });
         }
         check_fragment_fetchers(schema, frag, resolvers)?;
     }
@@ -424,7 +441,9 @@ fn check_fragment_fetchers<Src: Clone + Send + Sync + 'static>(
 ) -> Result<(), ValidateError> {
     let record = schema
         .record(&frag.on)
-        .ok_or_else(|| ValidateError::UnknownRecord { record: frag.on.clone() })?;
+        .ok_or_else(|| ValidateError::UnknownRecord {
+            record: frag.on.clone(),
+        })?;
     check_selection_fetchers(schema, &record.fields, &frag.selection, resolvers)
 }
 
@@ -483,14 +502,24 @@ fn check_selection_fetchers<Src: Clone + Send + Sync + 'static>(
 /// before [`validate_registered`] adds the resolver-table check.
 pub fn validate(schema: &Schema, op: &CanonOp) -> Result<(), ValidateError> {
     for sel in &op.selection {
-        let CanonSel::Root { field, list, frag, .. } = sel else {
-            return Err(ValidateError::TopLevelNotRoot { op: op.content_hash() });
+        let CanonSel::Root {
+            field, list, frag, ..
+        } = sel
+        else {
+            return Err(ValidateError::TopLevelNotRoot {
+                op: op.content_hash(),
+            });
         };
         let root = schema
             .root_def(field)
-            .ok_or_else(|| ValidateError::UnknownRoot { root: field.clone() })?;
+            .ok_or_else(|| ValidateError::UnknownRoot {
+                root: field.clone(),
+            })?;
         if root.list != *list {
-            return Err(ValidateError::RootArity { root: field.clone(), schema_list: root.list });
+            return Err(ValidateError::RootArity {
+                root: field.clone(),
+                schema_list: root.list,
+            });
         }
         if root.output != frag.on {
             return Err(ValidateError::RootOutput {
@@ -507,7 +536,9 @@ pub fn validate(schema: &Schema, op: &CanonOp) -> Result<(), ValidateError> {
 fn validate_fragment(schema: &Schema, frag: &CanonOp) -> Result<(), ValidateError> {
     let record = schema
         .record(&frag.on)
-        .ok_or_else(|| ValidateError::UnknownRecord { record: frag.on.clone() })?;
+        .ok_or_else(|| ValidateError::UnknownRecord {
+            record: frag.on.clone(),
+        })?;
     validate_selection(schema, &frag.on, &record.fields, &frag.selection)
 }
 
@@ -520,9 +551,14 @@ fn validate_selection(
     selection: &[CanonSel],
 ) -> Result<(), ValidateError> {
     let field_type = |name: &str| -> Result<&FieldType, ValidateError> {
-        fields.iter().find(|f| f.name == name).map(|f| &f.ty).ok_or_else(|| {
-            ValidateError::UnknownField { scope: scope.to_string(), field: name.to_string() }
-        })
+        fields
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| &f.ty)
+            .ok_or_else(|| ValidateError::UnknownField {
+                scope: scope.to_string(),
+                field: name.to_string(),
+            })
     };
     for sel in selection {
         match sel {
@@ -531,7 +567,8 @@ fn validate_selection(
             }
             CanonSel::Spread { edge, frag: child } => {
                 match field_type(edge)? {
-                    FieldType::Ref { node } | FieldType::Value { value: node } if *node == child.on => {}
+                    FieldType::Ref { node } | FieldType::Value { value: node }
+                        if *node == child.on => {}
                     other => {
                         return Err(ValidateError::SpreadEdge {
                             scope: scope.to_string(),
@@ -549,7 +586,8 @@ fn validate_selection(
                     // both spread as `[Child]`.
                     FieldType::List { of }
                         if matches!(&**of, FieldType::Ref { node } if *node == child.on)
-                            || matches!(&**of, FieldType::Value { value } if *value == child.on) => {}
+                            || matches!(&**of, FieldType::Value { value } if *value == child.on) => {
+                    }
                     other => {
                         return Err(ValidateError::ListEdge {
                             scope: scope.to_string(),
@@ -563,8 +601,8 @@ fn validate_selection(
             }
             CanonSel::Optional { edge, frag: child } => {
                 match field_type(edge)? {
-                    FieldType::Optional { of }
-                        if matches!(&**of, FieldType::Ref { node } | FieldType::Value { value: node } if *node == child.on) => {}
+                    FieldType::Optional { of } if matches!(&**of, FieldType::Ref { node } | FieldType::Value { value: node } if *node == child.on) =>
+                        {}
                     other => {
                         return Err(ValidateError::OptionalEdge {
                             scope: scope.to_string(),
@@ -586,17 +624,21 @@ fn validate_selection(
                         field: field.clone(),
                     });
                 };
-                let def = schema.enumeration_def(value).ok_or_else(|| ValidateError::UnknownEnum {
-                    scope: scope.to_string(),
-                    field: field.clone(),
-                    name: value.clone(),
-                })?;
+                let def =
+                    schema
+                        .enumeration_def(value)
+                        .ok_or_else(|| ValidateError::UnknownEnum {
+                            scope: scope.to_string(),
+                            field: field.clone(),
+                            name: value.clone(),
+                        })?;
                 for selected in variants {
-                    let variant =
-                        def.variant(&selected.variant).ok_or_else(|| ValidateError::UnknownVariant {
+                    let variant = def.variant(&selected.variant).ok_or_else(|| {
+                        ValidateError::UnknownVariant {
                             enumeration: value.clone(),
                             variant: selected.variant.clone(),
-                        })?;
+                        }
+                    })?;
                     validate_selection(
                         schema,
                         &format!("{value}::{}", variant.name),
@@ -642,7 +684,10 @@ pub async fn execute<Src: Clone + Send + Sync + 'static>(
     let mut seed = Seed::new();
     let mut roots = serde_json::Map::new();
     for sel in &op.selection {
-        let CanonSel::Root { field, list, frag, .. } = sel else {
+        let CanonSel::Root {
+            field, list, frag, ..
+        } = sel
+        else {
             return Err(format!("unvalidated operation reached execute: {sel:?}").into());
         };
         let thunk = resolvers
@@ -653,22 +698,49 @@ pub async fn execute<Src: Clone + Send + Sync + 'static>(
         if *list {
             let nodes = match out {
                 serde_json::Value::Array(nodes) => nodes,
-                other => return Err(format!("list root `{field}` yielded non-array {other}").into()),
+                other => {
+                    return Err(format!("list root `{field}` yielded non-array {other}").into())
+                }
             };
             let mut ids = Vec::with_capacity(nodes.len());
             for node in nodes {
-                ids.push(seed_node(schema, &resolvers.fetchers, src, &mut seed, frag, node, resolvers.content.as_ref()).await?);
+                ids.push(
+                    seed_node(
+                        schema,
+                        &resolvers.fetchers,
+                        src,
+                        &mut seed,
+                        frag,
+                        node,
+                        resolvers.content.as_ref(),
+                    )
+                    .await?,
+                );
             }
             roots.insert(field.clone(), serde_json::Value::Array(ids));
         } else {
             if out.is_null() {
-                return Err(ExecError::Absent { root: field.clone() });
+                return Err(ExecError::Absent {
+                    root: field.clone(),
+                });
             }
-            let id = seed_node(schema, &resolvers.fetchers, src, &mut seed, frag, out, resolvers.content.as_ref()).await?;
+            let id = seed_node(
+                schema,
+                &resolvers.fetchers,
+                src,
+                &mut seed,
+                frag,
+                out,
+                resolvers.content.as_ref(),
+            )
+            .await?;
             roots.insert(field.clone(), id);
         }
     }
-    Ok(Executed { seed, roots: serde_json::Value::Object(roots) })
+    Ok(Executed {
+        seed,
+        roots: serde_json::Value::Object(roots),
+    })
 }
 
 /// Mask a fetched node's JSON down to the operation's **selection**: the id (identity
@@ -688,7 +760,15 @@ fn mask_selection(
     if let Some(id) = node.get("id") {
         masked.insert("id".to_string(), id.clone());
     }
-    mask_fields(schema, &frag.on, &record.fields, &frag.selection, node, content, &mut masked)?;
+    mask_fields(
+        schema,
+        &frag.on,
+        &record.fields,
+        &frag.selection,
+        node,
+        content,
+        &mut masked,
+    )?;
     Ok(serde_json::Value::Object(masked))
 }
 
@@ -714,7 +794,8 @@ fn mask_fields(
                 // the registered mapping executes with the operation, and View IR is
                 // what rides the wire -- the strict lattice's one live->view door.
                 let def = fields.iter().find(|f| &f.name == field);
-                let value = if matches!(def.map(|d| &d.ty), Some(idyll_schema::FieldType::Content)) {
+                let value = if matches!(def.map(|d| &d.ty), Some(idyll_schema::FieldType::Content))
+                {
                     let source = value.as_str().ok_or_else(|| {
                         format!("`{scope}.{field}` content source is not a string")
                     })?;
@@ -767,7 +848,10 @@ fn mask_fields(
                     .get(field)
                     .cloned()
                     .ok_or_else(|| format!("`{scope}` JSON is missing `{field}`"))?;
-                (field, mask_enum(schema, scope, fields, field, variants, &value, content)?)
+                (
+                    field,
+                    mask_enum(schema, scope, fields, field, variants, &value, content)?,
+                )
             }
             CanonSel::Root { field, .. } => {
                 return Err(format!("root `{field}` nested in a fragment").into())
@@ -851,8 +935,18 @@ fn seed_node<'a, Src: Clone + Send + Sync + 'static>(
         let record = schema
             .record(&frag.on)
             .ok_or_else(|| format!("record `{}` is not in the schema", frag.on))?;
-        follow_edges(schema, fetchers, src, seed, &frag.on, &record.fields, &frag.selection, &node, content)
-            .await?;
+        follow_edges(
+            schema,
+            fetchers,
+            src,
+            seed,
+            &frag.on,
+            &record.fields,
+            &frag.selection,
+            &node,
+            content,
+        )
+        .await?;
         Ok(id)
     })
 }
@@ -956,10 +1050,13 @@ fn follow_edges<'a, Src: Clone + Send + Sync + 'static>(
                         .get(field)
                         .ok_or_else(|| format!("`{scope}` JSON is missing `{field}`"))?;
                     // A unit variant (bare tag) has no fields, so nothing fetches.
-                    let serde_json::Value::Object(map) = value else { continue };
-                    let Some((tag, payload)) = map.iter().next() else { continue };
-                    let enum_name = match fields.iter().find(|f| &f.name == field).map(|f| &f.ty)
-                    {
+                    let serde_json::Value::Object(map) = value else {
+                        continue;
+                    };
+                    let Some((tag, payload)) = map.iter().next() else {
+                        continue;
+                    };
+                    let enum_name = match fields.iter().find(|f| &f.name == field).map(|f| &f.ty) {
                         Some(FieldType::Value { value }) => value.as_str(),
                         other => {
                             return Err(

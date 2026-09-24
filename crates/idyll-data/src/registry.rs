@@ -199,7 +199,10 @@ mod tests {
         std::fs::write(dir.join("deadbeef.query"), "not the real body").unwrap();
 
         let allow = load(&dir).unwrap();
-        assert!(allow.is_empty(), "a file whose name != sha256(contents) is rejected");
+        assert!(
+            allow.is_empty(),
+            "a file whose name != sha256(contents) is rejected"
+        );
 
         std::fs::remove_dir_all(&root).ok();
     }
@@ -248,9 +251,15 @@ mod tests {
         let hash = |q: &QueryFile| q.filename.strip_suffix(".query").unwrap().to_string();
         // The committed op survives (back-compat), the fresh op is added, and the
         // uncommitted stray is gone (reset to the committed baseline first).
-        assert!(allow.accepts(&hash(&committed)), "committed op must survive rebuild");
+        assert!(
+            allow.accepts(&hash(&committed)),
+            "committed op must survive rebuild"
+        );
         assert!(allow.accepts(&hash(&fresh)), "fresh op must be written");
-        assert!(!dir.join("stray.query").exists(), "untracked churn must be cleaned");
+        assert!(
+            !dir.join("stray.query").exists(),
+            "untracked churn must be cleaned"
+        );
 
         std::fs::remove_dir_all(&root).ok();
     }

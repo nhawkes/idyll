@@ -28,10 +28,18 @@ struct Db;
 
 impl Db {
     fn post(&self, id: u64) -> Post {
-        Post { id, title: format!("post {id}"), author: idyll_data::Ref::new(7), draft: true }
+        Post {
+            id,
+            title: format!("post {id}"),
+            author: idyll_data::Ref::new(7),
+            draft: true,
+        }
     }
     fn author(&self, id: u64) -> Author {
-        Author { id, name: format!("author {id}") }
+        Author {
+            id,
+            name: format!("author {id}"),
+        }
     }
 }
 
@@ -97,22 +105,38 @@ fn a_persisted_artifact_validates_and_executes_to_a_preloaded_payload() {
     let op = op();
     validate(&schema, &op).expect("the artifact typechecks against the schema");
 
-    let executed = block_on(execute(&schema, &op, &resolvers(), &Db, &serde_json::json!({})))
-        .expect("executes");
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers(),
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .expect("executes");
 
     // The roots object is shaped like the generated `…Roots` struct: field → [ids].
     assert_eq!(executed.roots, serde_json::json!({ "posts": [1, 2] }));
 
     // Every reached node is seeded: 2 posts + the author edge fetched per post.
-    let payload: serde_json::Value =
-        serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
     let commits = payload["seed"]["commits"].as_array().unwrap();
-    let tags: Vec<&str> = commits.iter().map(|c| c["Commit"]["type_tag"].as_str().unwrap()).collect();
-    assert_eq!(tags, ["Post", "Author", "Post", "Author"], "walk order: node then its edges");
+    let tags: Vec<&str> = commits
+        .iter()
+        .map(|c| c["Commit"]["type_tag"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        tags,
+        ["Post", "Author", "Post", "Author"],
+        "walk order: node then its edges"
+    );
     assert_eq!(commits[1]["Commit"]["json"]["name"], "author 7");
 
     // Masking is enforced at the source: the unselected `draft` field never crossed.
-    assert_eq!(commits[0]["Commit"]["json"].get("draft"), None, "unselected field leaked");
+    assert_eq!(
+        commits[0]["Commit"]["json"].get("draft"),
+        None,
+        "unselected field leaked"
+    );
     assert!(commits[0]["Commit"]["json"].get("title").is_some());
 }
 
@@ -133,14 +157,22 @@ fn boot_validation_rejects_schema_drift_loudly() {
     let err = validate(&drifted, &op).unwrap_err();
     assert_eq!(
         err,
-        idyll_data::ValidateError::UnknownField { scope: "Post".into(), field: "author".into() }
+        idyll_data::ValidateError::UnknownField {
+            scope: "Post".into(),
+            field: "author".into()
+        }
     );
 
     // An artifact naming a root the schema lacks.
     let mut no_root = schema();
     no_root.roots.clear();
     let err = validate(&no_root, &op).unwrap_err();
-    assert_eq!(err, idyll_data::ValidateError::UnknownRoot { root: "posts".into() });
+    assert_eq!(
+        err,
+        idyll_data::ValidateError::UnknownRoot {
+            root: "posts".into()
+        }
+    );
 }
 
 /// Absence is a value: a single root may yield `Option<T>`, and `Ok(None)` surfaces as
@@ -153,8 +185,9 @@ async fn maybe_post(db: &Db, id: u64) -> Result<Option<Post>, std::convert::Infa
 #[test]
 fn an_absent_single_root_is_typed_not_a_fault() {
     let schema = Schema::new().root(maybe_post().entry);
-    let resolvers: Resolvers<Db> =
-        Resolvers::new().root(maybe_post().resolver).fetch::<Author>();
+    let resolvers: Resolvers<Db> = Resolvers::new()
+        .root(maybe_post().resolver)
+        .fetch::<Author>();
     let op = CanonOp::from_canonical_json(
         &serde_json::json!({
             "on": "Query",
@@ -169,12 +202,24 @@ fn an_absent_single_root_is_typed_not_a_fault() {
     idyll_data::validate(&schema, &op).expect("Option roots publish their Node output");
 
     // Present: executes normally.
-    block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({ "id": 1 })))
-        .expect("present record executes");
+    block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({ "id": 1 }),
+    ))
+    .expect("present record executes");
 
     // Absent: the typed outcome, not a stringly fault.
-    let err = block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({ "id": 9 })))
-        .unwrap_err();
+    let err = block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({ "id": 9 }),
+    ))
+    .unwrap_err();
     assert!(
         matches!(err, idyll_data::ExecError::Absent { ref root } if root == "maybe_post"),
         "expected Absent, got: {err}"
@@ -253,28 +298,50 @@ fn a_sum_typed_field_masks_and_fetches_the_matched_variant_only() {
 
     // The data variant: externally tagged, masked to its selection (`secret` gone),
     // the ref edge riding as its id AND fetched into the seed.
-    let executed =
-        block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({ "pinned": true })))
-            .expect("executes");
-    let payload: serde_json::Value =
-        serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({ "pinned": true }),
+    ))
+    .expect("executes");
+    let payload: serde_json::Value = serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
     let commits = payload["seed"]["commits"].as_array().unwrap();
-    let tags: Vec<&str> =
-        commits.iter().map(|c| c["Commit"]["type_tag"].as_str().unwrap()).collect();
-    assert_eq!(tags, ["Home", "Author"], "the variant's edge fetches: {commits:?}");
+    let tags: Vec<&str> = commits
+        .iter()
+        .map(|c| c["Commit"]["type_tag"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        tags,
+        ["Home", "Author"],
+        "the variant's edge fetches: {commits:?}"
+    );
     let feed = &commits[0]["Commit"]["json"]["feed"];
     assert_eq!(feed["Pinned"]["note"], "note");
     assert_eq!(feed["Pinned"]["author"], 7);
-    assert_eq!(feed["Pinned"].get("secret"), None, "unselected variant field leaked");
+    assert_eq!(
+        feed["Pinned"].get("secret"),
+        None,
+        "unselected variant field leaked"
+    );
 
     // The unit variant: a bare tag on the wire, nothing fetched.
-    let executed =
-        block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({ "pinned": false })))
-            .expect("executes");
-    let payload: serde_json::Value =
-        serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({ "pinned": false }),
+    ))
+    .expect("executes");
+    let payload: serde_json::Value = serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
     let commits = payload["seed"]["commits"].as_array().unwrap();
-    assert_eq!(commits.len(), 1, "the empty feed fetches nothing: {commits:?}");
+    assert_eq!(
+        commits.len(),
+        1,
+        "the empty feed fetches nothing: {commits:?}"
+    );
     assert_eq!(commits[0]["Commit"]["json"]["feed"], "Empty");
 }
 
@@ -331,10 +398,19 @@ async fn story(db: &Db) -> Result<Story, std::convert::Infallible> {
     let _ = db;
     Ok(Story {
         id: 1,
-        byline: Byline { author: idyll_data::Ref::new(3), label: "lead".to_string() },
+        byline: Byline {
+            author: idyll_data::Ref::new(3),
+            label: "lead".to_string(),
+        },
         credits: vec![
-            Byline { author: idyll_data::Ref::new(4), label: "photo".to_string() },
-            Byline { author: idyll_data::Ref::new(5), label: "copy".to_string() },
+            Byline {
+                author: idyll_data::Ref::new(4),
+                label: "photo".to_string(),
+            },
+            Byline {
+                author: idyll_data::Ref::new(5),
+                label: "copy".to_string(),
+            },
         ],
     })
 }
@@ -378,13 +454,20 @@ fn a_ref_inside_an_embedded_value_fetches_and_seeds() {
     idyll_data::validate_registered(&schema, &op, &resolvers)
         .expect("the fetcher the value's edge needs is registered");
 
-    let executed = block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({})))
-        .expect("executes");
-    let payload: serde_json::Value =
-        serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .expect("executes");
+    let payload: serde_json::Value = serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
     let commits = payload["seed"]["commits"].as_array().unwrap();
-    let tags: Vec<&str> =
-        commits.iter().map(|c| c["Commit"]["type_tag"].as_str().unwrap()).collect();
+    let tags: Vec<&str> = commits
+        .iter()
+        .map(|c| c["Commit"]["type_tag"].as_str().unwrap())
+        .collect();
     assert_eq!(
         tags,
         ["Story", "Author", "Author", "Author"],
@@ -393,10 +476,15 @@ fn a_ref_inside_an_embedded_value_fetches_and_seeds() {
 
     let story = &commits[0]["Commit"]["json"];
     assert_eq!(story["byline"]["label"], "lead");
-    assert_eq!(story["byline"]["author"], 3, "the value's ref rides as its id");
+    assert_eq!(
+        story["byline"]["author"], 3,
+        "the value's ref rides as its id"
+    );
     assert_eq!(story["credits"][1]["author"], 5);
-    let names: Vec<&str> =
-        commits[1..].iter().map(|c| c["Commit"]["json"]["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = commits[1..]
+        .iter()
+        .map(|c| c["Commit"]["json"]["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, ["author 3", "author 4", "author 5"]);
 }
 
@@ -406,15 +494,26 @@ fn execution_refuses_unregistered_roots_and_fetchers() {
     let op = op();
 
     // No resolver for the root.
-    let err = block_on(execute(&schema, &op, &Resolvers::<Db>::new(), &Db, &serde_json::json!({})))
-        .unwrap_err();
+    let err = block_on(execute(
+        &schema,
+        &op,
+        &Resolvers::<Db>::new(),
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .unwrap_err();
     assert!(err.to_string().contains("posts"), "unhelpful error: {err}");
 
     // Root registered but the edge fetcher missing.
-    let no_fetcher: Resolvers<Db> = Resolvers::new()
-        .root(posts().resolver);
-    let err =
-        block_on(execute(&schema, &op, &no_fetcher, &Db, &serde_json::json!({}))).unwrap_err();
+    let no_fetcher: Resolvers<Db> = Resolvers::new().root(posts().resolver);
+    let err = block_on(execute(
+        &schema,
+        &op,
+        &no_fetcher,
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .unwrap_err();
     assert!(err.to_string().contains("Author"), "unhelpful error: {err}");
 }
 
@@ -429,7 +528,10 @@ pub struct Doc {
 #[root]
 async fn doc(db: &Db) -> Result<Doc, std::convert::Infallible> {
     let _ = db;
-    Ok(Doc { id: 1, body: "hello content".into() })
+    Ok(Doc {
+        id: 1,
+        body: "hello content".into(),
+    })
 }
 
 fn doc_op() -> CanonOp {
@@ -456,10 +558,15 @@ fn content_fields_map_to_view_ir_in_the_payload() {
     let resolvers: Resolvers<Db> = Resolvers::new()
         .root(doc().resolver)
         .content(|source| idyll::View::text(source.to_uppercase()));
-    let executed = block_on(execute(&schema, &op, &resolvers, &Db, &serde_json::json!({})))
-        .expect("executes");
-    let payload: serde_json::Value =
-        serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers,
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .expect("executes");
+    let payload: serde_json::Value = serde_json::from_slice(&executed.to_preloaded_json()).unwrap();
     let body = &payload["seed"]["commits"][0]["Commit"]["json"]["body"];
     let view: idyll::View = serde_json::from_value(body.clone()).expect("the field IS a view");
     assert_eq!(
@@ -471,5 +578,8 @@ fn content_fields_map_to_view_ir_in_the_payload() {
     let bare: Resolvers<Db> = Resolvers::new().root(doc().resolver);
     let err = block_on(execute(&schema, &op, &bare, &Db, &serde_json::json!({})))
         .expect_err("no mapping registered");
-    assert!(format!("{err}").contains("content mapping"), "unhelpful error: {err}");
+    assert!(
+        format!("{err}").contains("content mapping"),
+        "unhelpful error: {err}"
+    );
 }

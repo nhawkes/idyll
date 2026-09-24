@@ -11,10 +11,10 @@ use crate::capability::Client;
 use crate::dev::{MessageLog, ReplayInputError, ReplayInputs};
 use crate::driver::SlotId;
 use crate::inbox::{Inbox, InboxSender};
-use crate::runtime::MountGuard;
-use crate::owner::Owner;
-use crate::signal::{ListenGuard, MutableSignal, Signal};
 use crate::live_view::LiveView;
+use crate::owner::Owner;
+use crate::runtime::MountGuard;
+use crate::signal::{ListenGuard, MutableSignal, Signal};
 
 // ── Typestate markers ─────────────────────────────────────────────────────────
 
@@ -209,7 +209,10 @@ pub struct WiredFragmentDecl {
 }
 
 pub(crate) enum WiredFragmentKind {
-    Branch { keep: bool, arms: u32 },
+    Branch {
+        keep: bool,
+        arms: u32,
+    },
     List {
         structure: Rc<dyn crate::live_view::ForStructure>,
         rebuild: Rc<dyn Fn(crate::Row) -> Option<WiredView>>,
@@ -370,8 +373,8 @@ fn wire_view<M: 'static>(
                         FragmentKind::Content => WiredFragmentKind::Content,
                         // The slotted view wires now, in its own child scope — its
                         // block joins the mount so its events reach this reducer.
-                        FragmentKind::Slot(cell) => WiredFragmentKind::Slot(RefCell::new(
-                            cell.take().map(|slot_view| {
+                        FragmentKind::Slot(cell) => {
+                            WiredFragmentKind::Slot(RefCell::new(cell.take().map(|slot_view| {
                                 wire_view(
                                     slot_view,
                                     sender.clone(),
@@ -379,8 +382,8 @@ fn wire_view<M: 'static>(
                                     owner.child(),
                                     Vec::new(),
                                 )
-                            }),
-                        )),
+                            })))
+                        }
                     },
                 })
                 .collect();
@@ -454,41 +457,42 @@ where
     Fut: std::future::Future<Output = std::result::Result<LiveView<M>, crate::Fault>>,
 {
     let recipe = Rc::new(recipe);
-    let subscribe = Rc::new(move |child_id: crate::runtime::ChildId, frame: &ContextMap| {
-        let contexts = ContextScope::child(frame);
-        let rt = Rc::clone(contexts.runtime());
-        let sender = sender.clone();
-        let recipe = Rc::clone(&recipe);
-        let task = rt.spawn_pending(async move {
-            let scope = RenderScope::new(sender.clone(), Rc::clone(&contexts));
-            let view = match recipe(scope).await {
-                Ok(built) => built,
-                // The instance failed before rendering: route to the nearest error boundary and
-                // hold the (empty) task open so the placement guard still reaps it.
-                Err(error) => {
-                    FaultRoute::from_frame(&contexts).route(error);
-                    std::future::pending::<()>().await;
-                    return;
-                }
-            };
-            // A fresh owner per instance, kept alive by riding the instance's own cleanup — so
-            // the cells live exactly as long as the instance. Its embedded children ride the
-            // view's `placement_guards`, folded into cleanup by `wire_view`.
-            let owner = Owner::new(contexts.runtime());
-            let cleanup = vec![MountGuard::new(owner.clone())];
-            let (guards, sink) = contexts.runtime().child_render_sink(child_id);
-            let wired = wire_view(view, sender, Rc::clone(&contexts), owner, cleanup);
-            sink(wired);
-            // Hold the instance's DOM guards for the task's life; cancelling the task (dropping
-            // the SlotGuard) drops them, unmounting the subtree.
-            let _dom = guards;
-            std::future::pending::<()>().await;
-        });
-        crate::slot::SlotGuard::new(move || drop(task))
-    });
+    let subscribe = Rc::new(
+        move |child_id: crate::runtime::ChildId, frame: &ContextMap| {
+            let contexts = ContextScope::child(frame);
+            let rt = Rc::clone(contexts.runtime());
+            let sender = sender.clone();
+            let recipe = Rc::clone(&recipe);
+            let task = rt.spawn_pending(async move {
+                let scope = RenderScope::new(sender.clone(), Rc::clone(&contexts));
+                let view = match recipe(scope).await {
+                    Ok(built) => built,
+                    // The instance failed before rendering: route to the nearest error boundary and
+                    // hold the (empty) task open so the placement guard still reaps it.
+                    Err(error) => {
+                        FaultRoute::from_frame(&contexts).route(error);
+                        std::future::pending::<()>().await;
+                        return;
+                    }
+                };
+                // A fresh owner per instance, kept alive by riding the instance's own cleanup — so
+                // the cells live exactly as long as the instance. Its embedded children ride the
+                // view's `placement_guards`, folded into cleanup by `wire_view`.
+                let owner = Owner::new(contexts.runtime());
+                let cleanup = vec![MountGuard::new(owner.clone())];
+                let (guards, sink) = contexts.runtime().child_render_sink(child_id);
+                let wired = wire_view(view, sender, Rc::clone(&contexts), owner, cleanup);
+                sink(wired);
+                // Hold the instance's DOM guards for the task's life; cancelling the task (dropping
+                // the SlotGuard) drops them, unmounting the subtree.
+                let _dom = guards;
+                std::future::pending::<()>().await;
+            });
+            crate::slot::SlotGuard::new(move || drop(task))
+        },
+    );
     crate::slot::Slot::new(subscribe)
 }
-
 
 // ── Ctx ───────────────────────────────────────────────────────────────────────
 
@@ -625,10 +629,7 @@ impl<M: 'static> RenderScope<M> {
 
 impl<M: 'static> Ctx<Setup, M> {
     /// Assemble a fresh setup context.
-    fn assemble(
-        contexts: ContextMap,
-        render_sink: Option<Rc<dyn Fn(WiredView)>>,
-    ) -> Self {
+    fn assemble(contexts: ContextMap, render_sink: Option<Rc<dyn Fn(WiredView)>>) -> Self {
         let inbox = Inbox::new();
         let sender = inbox.sender();
         // An island root — no render sink, so it posts to the runtime's `pending_view` rather than a
@@ -694,10 +695,7 @@ impl<M: 'static> Ctx<Setup, M> {
     /// The context a **fire-and-forget** view-embedded child runs under (a reactive `@if`/`@match`
     /// arm, a `@for` row, a slot instance): it carries the render sink its view posts to (the
     /// parent's splice, keyed by `child_id`). Its render is not awaited, so nothing witnesses it.
-    pub(crate) fn spawned(
-        contexts: ContextMap,
-        render_sink: Rc<dyn Fn(WiredView)>,
-    ) -> Self {
+    pub(crate) fn spawned(contexts: ContextMap, render_sink: Rc<dyn Fn(WiredView)>) -> Self {
         Self::assemble(contexts, Some(render_sink))
     }
 
@@ -791,7 +789,8 @@ impl<M: 'static> Ctx<Setup, M> {
         self,
         content: crate::View,
     ) -> std::result::Result<Ctx<Live, M>, crate::Fault> {
-        self.render(move |_| async move { Ok(LiveView::from_content(content)) }).await
+        self.render(move |_| async move { Ok(LiveView::from_content(content)) })
+            .await
     }
 
     /// Bind this component's registered subscriptions — client effects and tick/nav/size subs —
@@ -811,7 +810,11 @@ impl<M: 'static> Ctx<Setup, M> {
             .into_iter()
             .map(|spec| {
                 let sender = self.sender.clone();
-                let TickSubSpec { interval_ms, gate, map } = spec;
+                let TickSubSpec {
+                    interval_ms,
+                    gate,
+                    map,
+                } = spec;
                 WiredTickSub {
                     interval_ms,
                     gate,
@@ -974,9 +977,8 @@ impl<M: 'static> Ctx<Setup, M> {
         let first = std::cell::Cell::new(true);
         // A subscription finer-grained than a scope: the guard holds the effect's only
         // strong reference, so dropping it stops the effect.
-        let effect = crate::signal::reaction::Reaction::spawn_guarded(
-            self.contexts.runtime(),
-            move |cx| {
+        let effect =
+            crate::signal::reaction::Reaction::spawn_guarded(self.contexts.runtime(), move |cx| {
                 let value = signal.get(cx);
                 if first.replace(false) {
                     return; // a change subscription, not the initial value
@@ -984,8 +986,7 @@ impl<M: 'static> Ctx<Setup, M> {
                 if let Some(msg) = mapper(&value) {
                     sender.send(msg);
                 }
-            },
-        );
+            });
         ListenGuard::new(effect)
     }
 
@@ -1001,9 +1002,11 @@ impl<M: 'static> Ctx<Setup, M> {
     /// mounted under it (until a nearer error boundary shadows this one) routes here.
     pub fn fault_sink(&self, map: impl Fn(Rc<dyn Error>) -> M + 'static) {
         let sender = self.sender.clone();
-        self.contexts.insert::<FaultSink>(Rc::new(FaultSink(Rc::new(move |error: Box<dyn Error>| {
-            sender.send(map(Rc::from(error)));
-        }))));
+        self.contexts.insert::<FaultSink>(Rc::new(FaultSink(Rc::new(
+            move |error: Box<dyn Error>| {
+                sender.send(map(Rc::from(error)));
+            },
+        ))));
     }
 }
 
@@ -1304,7 +1307,9 @@ impl ContextHandle {
     /// component. Read once, after the mount's initial flush has settled (see
     /// [`StaticProbe`]); absent probe (a non-root frame) reads as not-static.
     pub fn paint_is_static(&self) -> bool {
-        self.0.get::<StaticProbe>().is_some_and(|probe| probe.is_static())
+        self.0
+            .get::<StaticProbe>()
+            .is_some_and(|probe| probe.is_static())
     }
 }
 
@@ -1332,11 +1337,13 @@ impl<M: 'static> Ctx<Setup, M> {
         apply: impl Fn(&crate::Turn, &[u8]) -> std::result::Result<(), E> + 'static,
     ) -> SeedSink {
         let fault = self.fault.clone();
-        let installed = self.inbox.set_absorber(Rc::new(move |turn: &crate::Turn, bytes: &[u8]| {
-            if let Err(error) = apply(turn, bytes) {
-                fault.fail(error);
-            }
-        }));
+        let installed =
+            self.inbox
+                .set_absorber(Rc::new(move |turn: &crate::Turn, bytes: &[u8]| {
+                    if let Err(error) = apply(turn, bytes) {
+                        fault.fail(error);
+                    }
+                }));
         if !installed {
             // The same contract-violation class as completing unrendered: fault the
             // one component (guests are panic=abort — a panic here would kill every
@@ -1347,7 +1354,9 @@ impl<M: 'static> Ctx<Setup, M> {
             return SeedSink(Rc::new(|_| {}));
         }
         let sender = self.sender.clone();
-        SeedSink(Rc::new(move |bytes: &[u8]| sender.send_absorb(bytes.to_vec())))
+        SeedSink(Rc::new(move |bytes: &[u8]| {
+            sender.send_absorb(bytes.to_vec())
+        }))
     }
 
     /// Provide a value into this component's context frame, visible to descendants
@@ -1432,8 +1441,10 @@ where
 {
     pub fn record_messages(&self) -> MessageLog {
         let log = MessageLog::new();
-        self.inbox.set_recorder(Some(log.recorder::<M>(self.contexts.runtime())));
-        self.inbox.set_absorb_recorder(Some(log.absorb_recorder(self.contexts.runtime())));
+        self.inbox
+            .set_recorder(Some(log.recorder::<M>(self.contexts.runtime())));
+        self.inbox
+            .set_absorb_recorder(Some(log.absorb_recorder(self.contexts.runtime())));
         log
     }
 

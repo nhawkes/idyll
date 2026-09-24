@@ -93,5 +93,8 @@ pub fn encode_segment(seg: &str) -> String {
 
 /// Percent-decode one path segment. `None` on invalid UTF-8.
 pub fn decode_segment(seg: &str) -> Option<String> {
-    percent_encoding::percent_decode_str(seg).decode_utf8().ok().map(|c| c.into_owned())
+    percent_encoding::percent_decode_str(seg)
+        .decode_utf8()
+        .ok()
+        .map(|c| c.into_owned())
 }

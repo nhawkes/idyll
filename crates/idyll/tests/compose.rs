@@ -63,13 +63,19 @@ fn a_slotted_view_mounts_and_its_events_reach_the_parent_reducer() {
     let mut rt = idyll::Runtime::new();
     let mut driver = idyll::CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(|ctx| host(ctx), ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        |ctx| host(ctx),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_to_quiescence();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
     driver.take_commands(); // initial paint
 
-    let click = driver.latest_handler().expect("the slotted button registered a click handler");
+    let click = driver
+        .latest_handler()
+        .expect("the slotted button registered a click handler");
     driver.dispatch_event(click, idyll::Event::default());
     rt.run_to_quiescence();
     rt.flush(&mut driver);
@@ -81,7 +87,11 @@ fn a_slotted_view_mounts_and_its_events_reach_the_parent_reducer() {
             _ => None,
         })
         .collect();
-    assert_eq!(texts, ["1"], "the slotted view's click reached the parent's reducer");
+    assert_eq!(
+        texts,
+        ["1"],
+        "the slotted view's click reached the parent's reducer"
+    );
 }
 
 #[test]
@@ -131,17 +141,25 @@ fn a_view_interpolation_places_a_passed_view_and_routes_its_events() {
     let mut rt = idyll::Runtime::new();
     let mut driver = idyll::CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(|ctx| host(ctx), ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        |ctx| host(ctx),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_to_quiescence();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
     let mount_commands = driver.take_commands();
     assert!(
-        mount_commands.iter().any(|c| matches!(c, DomCommand::SetText { text, .. } if text == "Title")),
+        mount_commands
+            .iter()
+            .any(|c| matches!(c, DomCommand::SetText { text, .. } if text == "Title")),
         "the one-shot title filled its slot: {mount_commands:?}"
     );
 
-    let click = driver.latest_handler().expect("the placed view's button registered a handler");
+    let click = driver
+        .latest_handler()
+        .expect("the placed view's button registered a handler");
     driver.dispatch_event(click, idyll::Event::default());
     rt.run_to_quiescence();
     rt.flush(&mut driver);
@@ -153,5 +171,9 @@ fn a_view_interpolation_places_a_passed_view_and_routes_its_events() {
             _ => None,
         })
         .collect();
-    assert_eq!(texts, ["1"], "the placed view's click reached the parent's reducer");
+    assert_eq!(
+        texts,
+        ["1"],
+        "the placed view's click reached the parent's reducer"
+    );
 }

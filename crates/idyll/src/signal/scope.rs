@@ -92,7 +92,9 @@ impl ViewScope {
     pub(crate) fn install(&self, count: u32, run: Rc<dyn Fn(&Cx, u32)>) -> u32 {
         let mut blocks = self.blocks.borrow_mut();
         let base = blocks.last().map(|b| b.base + b.count).unwrap_or(0);
-        self.reads.borrow_mut().resize_with((base + count) as usize, Vec::new);
+        self.reads
+            .borrow_mut()
+            .resize_with((base + count) as usize, Vec::new);
         blocks.push(Block { base, count, run });
         base
     }
@@ -257,7 +259,10 @@ mod tests {
 
         graph::source_changed(&core, &value);
         drain(&core);
-        assert!(runs.borrow().is_empty(), "a dropped dependency no longer wakes the index");
+        assert!(
+            runs.borrow().is_empty(),
+            "a dropped dependency no longer wakes the index"
+        );
     }
 
     /// A dropped scope's edges die: writes to sources it read run nothing and the

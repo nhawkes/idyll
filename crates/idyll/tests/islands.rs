@@ -24,9 +24,11 @@ enum Msg {
 /// the paint stream the membrane would return for a mount.
 async fn counter(ctx: Ctx<Setup, Msg>, start: u32) -> idyll::Result {
     let n = ctx.mutable_signal(start);
-    let mut ctx = ctx.render(live_view! {
-        button onclick=>(|_| Msg::Inc) { $n }
-    }).await?;
+    let mut ctx = ctx
+        .render(live_view! {
+            button onclick=>(|_| Msg::Inc) { $n }
+        })
+        .await?;
     loop {
         let (msg, _turn) = ctx.recv().await?;
         match msg {
@@ -40,7 +42,11 @@ fn island_paint(start: u32) -> Html {
     let mut rt = idyll::Runtime::new();
     let mut driver = idyll::CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(move |ctx| counter(ctx, start), ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        move |ctx| counter(ctx, start),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -61,7 +67,11 @@ fn a_static_shell_declares_islands_and_the_fold_splices_their_paint() {
     assert_eq!(body.live(), vec![("counter".to_string(), None)]);
 
     let html = view_html(&body, [(("counter".to_string(), 0), island_paint(3))]);
-    assert!(html.contains("<h1>Static shell</h1>"), "static content lost: {}", html.as_str());
+    assert!(
+        html.contains("<h1>Static shell</h1>"),
+        "static content lost: {}",
+        html.as_str()
+    );
     assert!(
         html.contains("<idyll-live data-i=\"counter\" style=\"display:contents\">"),
         "live wrapper missing: {}",
@@ -74,7 +84,11 @@ fn a_static_shell_declares_islands_and_the_fold_splices_their_paint() {
     );
     // Clean document: no claim scaffolding of any kind in the shipped HTML.
     for scaffolding in ["data-s", "idyll-t ", "<!--"] {
-        assert!(!html.contains(scaffolding), "fold leaked `{scaffolding}`: {}", html.as_str());
+        assert!(
+            !html.contains(scaffolding),
+            "fold leaked `{scaffolding}`: {}",
+            html.as_str()
+        );
     }
 }
 
@@ -84,7 +98,10 @@ fn the_same_island_twice_splices_by_mount_identity() {
         section { Counter() }
         section { Counter() }
     };
-    assert_eq!(body.live(), vec![("counter".to_string(), None), ("counter".to_string(), None)]);
+    assert_eq!(
+        body.live(),
+        vec![("counter".to_string(), None), ("counter".to_string(), None)]
+    );
 
     // Distinct instances get distinct paint — keyed (name, document-order index),
     // the identity every fold derives by walking the same tree in the same order.
@@ -97,7 +114,11 @@ fn the_same_island_twice_splices_by_mount_identity() {
     );
     let first = html.find("<button>1</button>").expect("instance 0 paint");
     let second = html.find("<button>2</button>").expect("instance 1 paint");
-    assert!(first < second, "instance paints out of document order: {}", html.as_str());
+    assert!(
+        first < second,
+        "instance paints out of document order: {}",
+        html.as_str()
+    );
 }
 
 #[test]
@@ -107,7 +128,11 @@ fn an_island_free_view_reports_no_islands() {
             h1 { "Just words" }
         }
     };
-    assert!(body.live().is_empty(), "live-free content must need no client: {:?}", body.live());
+    assert!(
+        body.live().is_empty(),
+        "live-free content must need no client: {:?}",
+        body.live()
+    );
     assert!(view_html(&body, []).contains("Just words"));
 }
 
@@ -119,7 +144,11 @@ fn an_optional_attribute_is_written_only_when_present() {
         p title[title] lang[fill] hidden[true] draggable[false] { "x" }
     };
     let html = view_html(&body, []);
-    assert!(html.contains("<p title=\"here\" hidden>x</p>"), "{}", html.as_str());
+    assert!(
+        html.contains("<p title=\"here\" hidden>x</p>"),
+        "{}",
+        html.as_str()
+    );
 }
 
 #[test]
@@ -169,7 +198,9 @@ async fn providing_parent(ctx: Ctx<Setup, ParentMsg>) -> idyll::Result {
 }
 
 async fn reading_child(ctx: Ctx<Setup, ChildMsg>) -> idyll::Result {
-    let shared = ctx.use_context::<SharedCount>().expect("child inherits the parent's provide");
+    let shared = ctx
+        .use_context::<SharedCount>()
+        .expect("child inherits the parent's provide");
     let n = shared.0.clone();
     let mut ctx = ctx.render(live_view! { span { ($n) } }).await?;
     loop {
@@ -198,7 +229,11 @@ fn a_child_mount_inherits_the_parent_mounts_context_and_updates_in_the_same_flus
     let parent_ctx = rt.ctx::<ParentMsg>();
     let bump = parent_ctx.inbox_sender();
     let parent_handle = parent_ctx.context_handle();
-    let _parent_task = rt.spawn_scoped(spawn_live(|ctx| providing_parent(ctx), parent_ctx, report_to_log));
+    let _parent_task = rt.spawn_scoped(spawn_live(
+        |ctx| providing_parent(ctx),
+        parent_ctx,
+        report_to_log,
+    ));
     rt.run_once();
     let _parent_mount = rt.mount_root(&mut driver);
     rt.flush(&mut driver);
@@ -207,7 +242,11 @@ fn a_child_mount_inherits_the_parent_mounts_context_and_updates_in_the_same_flus
     // The child mounts UNDER the parent's frame — the provide (made during the
     // parent's setup, after the handle was taken) is visible through the live frame.
     let child_ctx = Ctx::<Setup, ChildMsg>::for_mount(&rt, Some(&parent_handle));
-    let child_task = rt.spawn_scoped(spawn_live(|ctx| reading_child(ctx), child_ctx, report_to_log));
+    let child_task = rt.spawn_scoped(spawn_live(
+        |ctx| reading_child(ctx),
+        child_ctx,
+        report_to_log,
+    ));
     rt.run_once();
     let child_mount = rt.mount_root(&mut driver);
     rt.flush(&mut driver);
@@ -218,7 +257,11 @@ fn a_child_mount_inherits_the_parent_mounts_context_and_updates_in_the_same_flus
     rt.run_to_quiescence();
     rt.flush(&mut driver);
     let update = driver.take_commands();
-    assert_eq!(set_texts(&update), vec!["2", "2"], "both mounts update in one flush: {update:?}");
+    assert_eq!(
+        set_texts(&update),
+        vec!["2", "2"],
+        "both mounts update in one flush: {update:?}"
+    );
 
     // Unmounting the child (dropping its guards — the guest's `unmount`) frees its
     // nodes and unhooks its subscription: the next write updates the parent alone.
@@ -227,11 +270,17 @@ fn a_child_mount_inherits_the_parent_mounts_context_and_updates_in_the_same_flus
     rt.flush(&mut driver);
     let teardown = driver.take_commands();
     assert!(
-        teardown.iter().any(|c| matches!(c, idyll::DomCommand::FreeNodes { .. })),
+        teardown
+            .iter()
+            .any(|c| matches!(c, idyll::DomCommand::FreeNodes { .. })),
         "child unmount must free its minted nodes: {teardown:?}"
     );
     bump.send(ParentMsg::Bump);
     rt.run_to_quiescence();
     rt.flush(&mut driver);
-    assert_eq!(set_texts(&driver.take_commands()), vec!["3"], "the child's binding must be gone");
+    assert_eq!(
+        set_texts(&driver.take_commands()),
+        vec!["3"],
+        "the child's binding must be gone"
+    );
 }

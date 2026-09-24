@@ -187,8 +187,8 @@ impl MembraneEngine {
 
         let engine =
             Engine::new(&config).map_err(|e| anyhow!("configuring membrane engine: {e}"))?;
-        let component = Component::new(&engine, wasm)
-            .map_err(|e| anyhow!("compiling guest component: {e}"))?;
+        let component =
+            Component::new(&engine, wasm).map_err(|e| anyhow!("compiling guest component: {e}"))?;
 
         // The linker is per-engine and reused across renders; wire WASI once.
         let mut linker = Linker::<HostState>::new(&engine);
@@ -211,7 +211,9 @@ impl MembraneEngine {
     /// the client hydration draw from the same seed.
     fn store(&self, insecure_seed: u128) -> Store<HostState> {
         let state = HostState {
-            ctx: WasiCtxBuilder::new().insecure_random_seed(insecure_seed).build(),
+            ctx: WasiCtxBuilder::new()
+                .insecure_random_seed(insecure_seed)
+                .build(),
             table: ResourceTable::new(),
         };
         let mut store = Store::new(&self.engine, state);
@@ -277,7 +279,10 @@ impl MembraneEngine {
             Ok(Ok(result)) => {
                 let static_paint = result.static_paint;
                 match drain_paint(&guest, &mut store, result.flush) {
-                    Ok(commands) => Ok(MountOutcome::Commands { commands, static_paint }),
+                    Ok(commands) => Ok(MountOutcome::Commands {
+                        commands,
+                        static_paint,
+                    }),
                     Err(err) => classify_trap(err),
                 }
             }
@@ -345,9 +350,10 @@ fn dom_command(c: Command) -> idyll::DomCommand {
                     .collect(),
             ),
         },
-        Command::SetText(cmd) => {
-            idyll::DomCommand::SetText { node_id: NodeId(cmd.node), text: cmd.text }
-        }
+        Command::SetText(cmd) => idyll::DomCommand::SetText {
+            node_id: NodeId(cmd.node),
+            text: cmd.text,
+        },
         Command::SetAttr(cmd) => idyll::DomCommand::SetAttr {
             node_id: NodeId(cmd.node),
             name: cmd.name.into(),
@@ -358,9 +364,10 @@ fn dom_command(c: Command) -> idyll::DomCommand {
             name: cmd.name.into(),
             value: cmd.value,
         },
-        Command::RemoveAttr(cmd) => {
-            idyll::DomCommand::RemoveAttr { node_id: NodeId(cmd.node), name: cmd.name.into() }
-        }
+        Command::RemoveAttr(cmd) => idyll::DomCommand::RemoveAttr {
+            node_id: NodeId(cmd.node),
+            name: cmd.name.into(),
+        },
         Command::SetBoolAttr(cmd) => idyll::DomCommand::SetBoolAttr {
             node_id: NodeId(cmd.node),
             name: cmd.name.into(),
@@ -374,15 +381,15 @@ fn dom_command(c: Command) -> idyll::DomCommand {
             anchor_id: NodeId(cmd.anchor),
             template: TemplateId(cmd.template),
         },
-        Command::RemoveFragment(anchor) => {
-            idyll::DomCommand::RemoveFragment { anchor_id: NodeId(anchor) }
-        }
-        Command::DetachFragment(anchor) => {
-            idyll::DomCommand::DetachFragment { anchor_id: NodeId(anchor) }
-        }
-        Command::AttachFragment(anchor) => {
-            idyll::DomCommand::AttachFragment { anchor_id: NodeId(anchor) }
-        }
+        Command::RemoveFragment(anchor) => idyll::DomCommand::RemoveFragment {
+            anchor_id: NodeId(anchor),
+        },
+        Command::DetachFragment(anchor) => idyll::DomCommand::DetachFragment {
+            anchor_id: NodeId(anchor),
+        },
+        Command::AttachFragment(anchor) => idyll::DomCommand::AttachFragment {
+            anchor_id: NodeId(anchor),
+        },
         Command::MoveFragment(cmd) => idyll::DomCommand::MoveFragment {
             anchor_id: NodeId(cmd.anchor),
             after_anchor: NodeId(cmd.after),
@@ -415,9 +422,10 @@ fn dom_command(c: Command) -> idyll::DomCommand {
                 .map(|delta| (delta.layer, delta.changes, delta.len))
                 .collect(),
         },
-        Command::BindSlot(cmd) => {
-            idyll::DomCommand::BindSlot { slot: SlotId(cmd.slot), node_id: NodeId(cmd.node) }
-        }
+        Command::BindSlot(cmd) => idyll::DomCommand::BindSlot {
+            slot: SlotId(cmd.slot),
+            node_id: NodeId(cmd.node),
+        },
         Command::ServerRequest(cmd) => idyll::DomCommand::ServerRequest {
             request_id: RequestId(cmd.request),
             op: idyll::OpHash::from_words(cmd.msb, cmd.lsb),
@@ -428,19 +436,19 @@ fn dom_command(c: Command) -> idyll::DomCommand {
             op: idyll::OpHash::from_words(cmd.msb, cmd.lsb),
             path: cmd.path,
         },
-        Command::WatchNavigation(handler) => {
-            idyll::DomCommand::WatchNavigation { handler_id: HandlerId(handler) }
-        }
-        Command::WatchSize(handler) => {
-            idyll::DomCommand::WatchSize { handler_id: HandlerId(handler) }
-        }
+        Command::WatchNavigation(handler) => idyll::DomCommand::WatchNavigation {
+            handler_id: HandlerId(handler),
+        },
+        Command::WatchSize(handler) => idyll::DomCommand::WatchSize {
+            handler_id: HandlerId(handler),
+        },
         Command::StartTicks(cmd) => idyll::DomCommand::StartTicks {
             handler_id: HandlerId(cmd.handler),
             interval_ms: cmd.interval_ms,
         },
-        Command::StopTicks(handler) => {
-            idyll::DomCommand::StopTicks { handler_id: HandlerId(handler) }
-        }
+        Command::StopTicks(handler) => idyll::DomCommand::StopTicks {
+            handler_id: HandlerId(handler),
+        },
         Command::FreeNodes(ids) => idyll::DomCommand::FreeNodes {
             node_ids: ids.into_iter().map(NodeId).collect(),
         },
@@ -517,7 +525,10 @@ mod tests {
     #[test]
     fn a_typed_mount_error_surfaces_as_failed_not_a_fault() {
         let engine = engine();
-        match engine.mount("decline", 0, None, b"", 0, 100_000).expect("mount call succeeds") {
+        match engine
+            .mount("decline", 0, None, b"", 0, 100_000)
+            .expect("mount call succeeds")
+        {
             MountOutcome::Failed(message) => {
                 assert_eq!(message, "this live politely declines")
             }
@@ -529,7 +540,11 @@ mod tests {
     fn mount_streams_fold_to_the_island_paint() {
         let engine = engine();
         // Generous budget: the guest finishes in microseconds, far under deadline.
-        let html = paint(engine.mount("paint", 2, None, b"hello", 0, 100_000).expect("mount"));
+        let html = paint(
+            engine
+                .mount("paint", 2, None, b"hello", 0, 100_000)
+                .expect("mount"),
+        );
         assert_eq!(html, "<p>paint#2 seed 5 bytes</p>");
     }
 
@@ -538,7 +553,10 @@ mod tests {
     #[test]
     fn a_static_paint_verdict_crosses_the_membrane() {
         let engine = engine();
-        match engine.mount("paint", 0, None, b"x", 0, 100_000).expect("mount") {
+        match engine
+            .mount("paint", 0, None, b"x", 0, 100_000)
+            .expect("mount")
+        {
             MountOutcome::Commands { static_paint, .. } => assert!(static_paint),
             other => panic!("expected Commands, got {other:?}"),
         }
@@ -550,7 +568,11 @@ mod tests {
         // Each mount gets a fresh store; repeated mounts don't interfere.
         for _ in 0..16 {
             assert_eq!(
-                paint(engine.mount("paint", 0, None, b"x", 0, 100_000).expect("mount")),
+                paint(
+                    engine
+                        .mount("paint", 0, None, b"x", 0, 100_000)
+                        .expect("mount")
+                ),
                 "<p>paint#0 seed 1 bytes</p>"
             );
         }
@@ -563,7 +585,10 @@ mod tests {
     fn runaway_mount_blows_its_budget() {
         let engine = engine();
         // `b"spin"` loops forever in the guest; the tight budget trips the deadline.
-        match engine.mount("spin", 0, None, b"", 0, 1).expect("mount call itself must not error") {
+        match engine
+            .mount("spin", 0, None, b"", 0, 1)
+            .expect("mount call itself must not error")
+        {
             MountOutcome::BlewBudget => {}
             other => panic!("runaway mount should blow its budget, got {other:?}"),
         }
@@ -573,7 +598,8 @@ mod tests {
     #[test]
     fn guest_fault_is_a_typed_error_not_html() {
         let engine = engine();
-        let err = engine.mount("boom", 0, None, b"", 0, 100_000)
+        let err = engine
+            .mount("boom", 0, None, b"", 0, 100_000)
             .expect_err("a guest trap must surface as an Err, not Ok(commands)");
         assert!(
             err.to_string().contains("trapped"),

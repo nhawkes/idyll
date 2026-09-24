@@ -111,7 +111,12 @@ fn a_swapped_out_canvas_stops_painting_and_releases_its_shapes() {
 
     fn wire(at: f64) -> Shape {
         Shape {
-            curve: Curve { from: (at, 0.0), c1: (1.0, 0.0), c2: (2.0, 1.0), to: (3.0, 1.0) },
+            curve: Curve {
+                from: (at, 0.0),
+                c1: (1.0, 0.0),
+                c2: (2.0, 1.0),
+                to: (3.0, 1.0),
+            },
             span: (0.0, 1.0),
             ink: "var(--wall)".to_string(),
             width: 1.0,
@@ -147,7 +152,11 @@ fn a_swapped_out_canvas_stops_painting_and_releases_its_shapes() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(card, ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        card,
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -158,12 +167,22 @@ fn a_swapped_out_canvas_stops_painting_and_releases_its_shapes() {
         rt.flush(driver);
     };
     let paints = |commands: &[DomCommand]| {
-        commands.iter().filter(|c| matches!(c, DomCommand::Paint { .. })).count()
+        commands
+            .iter()
+            .filter(|c| matches!(c, DomCommand::Paint { .. }))
+            .count()
     };
 
-    assert!(paints(&driver.take_commands()) > 0, "the mounted canvas paints");
+    assert!(
+        paints(&driver.take_commands()) > 0,
+        "the mounted canvas paints"
+    );
     step(&mut rt, &mut driver, 1);
-    assert_eq!(paints(&driver.take_commands()), 1, "a written shape is one command");
+    assert_eq!(
+        paints(&driver.take_commands()),
+        1,
+        "a written shape is one command"
+    );
 
     step(&mut rt, &mut driver, 0); // swap the canvas away
     driver.take_commands();
@@ -171,14 +190,22 @@ fn a_swapped_out_canvas_stops_painting_and_releases_its_shapes() {
         step(&mut rt, &mut driver, 1);
     }
     let after = driver.take_commands();
-    assert_eq!(paints(&after), 0, "the swapped-out canvas is still painting: {after:#?}");
+    assert_eq!(
+        paints(&after),
+        0,
+        "the swapped-out canvas is still painting: {after:#?}"
+    );
 
     // Swapping back mounts a fresh canvas, which paints the whole picture again — and over
     // the whole run nothing writes to an id the stream has released.
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(card, ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        card,
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -192,7 +219,10 @@ fn a_swapped_out_canvas_stops_painting_and_releases_its_shapes() {
     let commands = driver.take_commands();
     assert!(paints(&commands) > 0, "the remounted canvas paints again");
     let offences = released_ids_written(&commands);
-    assert!(offences.is_empty(), "commands target released ids: {offences:#?}");
+    assert!(
+        offences.is_empty(),
+        "commands target released ids: {offences:#?}"
+    );
 }
 
 #[test]
@@ -201,7 +231,11 @@ fn a_swapped_out_child_component_stops_painting() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(app, ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        app,
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -230,7 +264,11 @@ fn a_swapped_out_child_component_stops_painting() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(app, ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        app,
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -242,5 +280,8 @@ fn a_swapped_out_child_component_stops_painting() {
     }
     let commands = driver.take_commands();
     let offences = released_ids_written(&commands);
-    assert!(offences.is_empty(), "commands target released ids: {offences:#?}");
+    assert!(
+        offences.is_empty(),
+        "commands target released ids: {offences:#?}"
+    );
 }

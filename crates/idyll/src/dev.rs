@@ -266,12 +266,16 @@ impl MessageLog {
 
     /// The absorb-side recorder: seed bytes are JSON on the wire, recorded as
     /// [`ABSORB_TY`] entries in the same totally-ordered log.
-    pub(crate) fn absorb_recorder(&self, rt: &Rc<crate::runtime::RuntimeCore>) -> Rc<dyn Fn(&[u8])> {
+    pub(crate) fn absorb_recorder(
+        &self,
+        rt: &Rc<crate::runtime::RuntimeCore>,
+    ) -> Rc<dyn Fn(&[u8])> {
         let inner = Rc::clone(&self.inner);
         let rt = Rc::downgrade(rt);
         Rc::new(move |bytes| {
-            let json = serde_json::from_slice(bytes)
-                .unwrap_or_else(|_| serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()));
+            let json = serde_json::from_slice(bytes).unwrap_or_else(|_| {
+                serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned())
+            });
             let record = MessageRecord {
                 sequence: next_delivery_sequence(&rt),
                 ty: ABSORB_TY.to_string(),
@@ -302,7 +306,9 @@ where
         std::task::Poll::Ready(Ok(view)) => view,
         std::task::Poll::Ready(Err(error)) => panic!("render_to_view: the view failed: {error}"),
         std::task::Poll::Pending => {
-            panic!("render_to_view: the view has unresolved async children (build a childless view)")
+            panic!(
+                "render_to_view: the view has unresolved async children (build a childless view)"
+            )
         }
     }
 }
@@ -319,9 +325,9 @@ pub fn paint<M: 'static>(view: crate::LiveView<M>) -> crate::template::Template 
     // `render` is async now; a childless view resolves in one poll, posting its wired view to
     // the runtime's `pending_view`. Drive it on the throwaway runtime, then fold the first paint.
     rt.spawn(async move {
-        let _ = ctx.render(|_| async move {
-            ::std::result::Result::<_, crate::Fault>::Ok(view)
-        }).await;
+        let _ = ctx
+            .render(|_| async move { ::std::result::Result::<_, crate::Fault>::Ok(view) })
+            .await;
     });
     rt.run_once();
     rt.process_pending_view(&mut driver);

@@ -57,10 +57,10 @@
 //! matches the runtime (one guest instance per thread) and lets the capability be a
 //! bare borrow rather than a branded generative lifetime.
 
-pub(crate) mod graph;
-pub(crate) mod scope;
 pub mod computed;
+pub(crate) mod graph;
 pub mod reaction;
+pub(crate) mod scope;
 pub mod vec;
 
 use std::cell::{Cell, Ref, RefCell};
@@ -158,7 +158,9 @@ pub struct Turn<'a> {
 
 impl<'a> Turn<'a> {
     pub(crate) fn mint() -> Self {
-        Turn { _scope: PhantomData }
+        Turn {
+            _scope: PhantomData,
+        }
     }
 }
 
@@ -191,7 +193,6 @@ impl Turn<'static> {
         Turn::mint()
     }
 }
-
 
 // ── Per-runtime signal state ────────────────────────────────────────────────────
 
@@ -233,7 +234,10 @@ struct RenderScopeState {
 
 impl RenderScopeState {
     fn fresh(boundary: Option<String>) -> Self {
-        RenderScopeState { boundary, counter: 1 }
+        RenderScopeState {
+            boundary,
+            counter: 1,
+        }
     }
 }
 
@@ -253,7 +257,10 @@ impl RenderScope {
             &mut *core.signals().render_scope.borrow_mut(),
             RenderScopeState::fresh(boundary),
         );
-        RenderScope { core: Rc::clone(core), prev }
+        RenderScope {
+            core: Rc::clone(core),
+            prev,
+        }
     }
 
     /// The boundary id of the currently active scope, if any.
@@ -703,7 +710,11 @@ mod tests {
         let src = owner.mutable_signal(0i32);
         let src_r = src.read();
         let d = deferred(&owner, move |cx| src_r.get(cx));
-        assert_eq!(*d.peek(), 0, "deferred seeds with the source's current value");
+        assert_eq!(
+            *d.peek(),
+            0,
+            "deferred seeds with the source's current value"
+        );
 
         let urgent_seen = Rc::new(RefCell::new(Vec::<i32>::new()));
         let deferred_seen = Rc::new(RefCell::new(Vec::<i32>::new()));
@@ -723,17 +734,31 @@ mod tests {
         src.set(&Turn::mint(), 2);
         loop {
             match graph::flush_step(rt.core()) {
-                FlushStep::Ran { pending: Some(Lane::Idle) } => break,
+                FlushStep::Ran {
+                    pending: Some(Lane::Idle),
+                } => break,
                 FlushStep::Ran { .. } => continue,
                 FlushStep::Done => break,
             }
         }
         assert_eq!(urgent_seen.borrow().last(), Some(&2));
-        assert_eq!(*d.peek(), 0, "deferred trails while only idle work is pending");
-        assert_eq!(*deferred_seen.borrow(), vec![0], "expensive subtree untouched");
+        assert_eq!(
+            *d.peek(),
+            0,
+            "deferred trails while only idle work is pending"
+        );
+        assert_eq!(
+            *deferred_seen.borrow(),
+            vec![0],
+            "expensive subtree untouched"
+        );
 
         rt.run_pending_effects();
         assert_eq!(*d.peek(), 2);
-        assert_eq!(*deferred_seen.borrow(), vec![0, 2], "coalesced: 1 was never seen");
+        assert_eq!(
+            *deferred_seen.borrow(),
+            vec![0, 2],
+            "coalesced: 1 was never seen"
+        );
     }
 }

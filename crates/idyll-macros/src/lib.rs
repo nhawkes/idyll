@@ -9,8 +9,7 @@ use syn::{
     ext::IdentExt,
     parenthesized,
     parse::{Parse, ParseStream},
-    parse_macro_input,
-    token,
+    parse_macro_input, token,
     visit::{self, Visit},
     Expr, Ident, ItemFn, LitStr, Result, ReturnType, Token,
 };
@@ -23,7 +22,10 @@ enum Node {
     /// `(expr)` or `$sig` in child position. `reactive` (a `$` was present) picks the
     /// channel: reactive → a `$sig`-style `run`-match binding (always text); one-shot
     /// → a construction-time `RenderKind` dispatch (text or a `(view)` mount).
-    Splice { expr: Expr, reactive: bool },
+    Splice {
+        expr: Expr,
+        reactive: bool,
+    },
     Directive(Directive),
 }
 
@@ -78,7 +80,10 @@ impl CssEntryAst {
 /// Split a `css=[…]` bracket body into entries: top-level commas separate entries,
 /// a top-level `=>` splits a conditional. `$` anywhere in an entry makes it reactive.
 fn parse_css_entries(raw: TokenStream2) -> Result<Vec<CssEntryAst>> {
-    fn split_top_level(tokens: Vec<proc_macro2::TokenTree>, is_sep: impl Fn(&[proc_macro2::TokenTree], usize) -> usize) -> Vec<Vec<proc_macro2::TokenTree>> {
+    fn split_top_level(
+        tokens: Vec<proc_macro2::TokenTree>,
+        is_sep: impl Fn(&[proc_macro2::TokenTree], usize) -> usize,
+    ) -> Vec<Vec<proc_macro2::TokenTree>> {
         let mut out = vec![Vec::new()];
         let mut i = 0;
         while i < tokens.len() {
@@ -87,7 +92,9 @@ fn parse_css_entries(raw: TokenStream2) -> Result<Vec<CssEntryAst>> {
                 out.push(Vec::new());
                 i += sep;
             } else {
-                out.last_mut().expect("one part is always open").push(tokens[i].clone());
+                out.last_mut()
+                    .expect("one part is always open")
+                    .push(tokens[i].clone());
                 i += 1;
             }
         }
@@ -97,14 +104,17 @@ fn parse_css_entries(raw: TokenStream2) -> Result<Vec<CssEntryAst>> {
         proc_macro2::TokenTree::Punct(p) if p.as_char() == ',' => 1,
         _ => 0,
     };
-    let fat_arrow = |tokens: &[proc_macro2::TokenTree], i: usize| match (&tokens[i], tokens.get(i + 1)) {
-        (proc_macro2::TokenTree::Punct(eq), Some(proc_macro2::TokenTree::Punct(gt)))
-            if eq.as_char() == '=' && eq.spacing() == proc_macro2::Spacing::Joint && gt.as_char() == '>' =>
-        {
-            2
-        }
-        _ => 0,
-    };
+    let fat_arrow =
+        |tokens: &[proc_macro2::TokenTree], i: usize| match (&tokens[i], tokens.get(i + 1)) {
+            (proc_macro2::TokenTree::Punct(eq), Some(proc_macro2::TokenTree::Punct(gt)))
+                if eq.as_char() == '='
+                    && eq.spacing() == proc_macro2::Spacing::Joint
+                    && gt.as_char() == '>' =>
+            {
+                2
+            }
+            _ => 0,
+        };
 
     let cx = cx_ident();
     let mut entries = Vec::new();
@@ -113,12 +123,15 @@ fn parse_css_entries(raw: TokenStream2) -> Result<Vec<CssEntryAst>> {
             continue; // the trailing comma
         }
         let parts = split_top_level(entry.clone(), fat_arrow);
-        let stream = |part: &[proc_macro2::TokenTree]| part.iter().cloned().collect::<TokenStream2>();
+        let stream =
+            |part: &[proc_macro2::TokenTree]| part.iter().cloned().collect::<TokenStream2>();
         match parts.as_slice() {
             [_] => {
                 let tokens = stream(&entry);
                 if find_dollar(&tokens).is_some() {
-                    entries.push(CssEntryAst::Dynamic(syn::parse2(desugar_dollars(tokens, &cx))?));
+                    entries.push(CssEntryAst::Dynamic(syn::parse2(desugar_dollars(
+                        tokens, &cx,
+                    ))?));
                 } else {
                     entries.push(CssEntryAst::Static(syn::parse2(tokens)?));
                 }
@@ -157,7 +170,11 @@ enum Attr {
     /// `style:prop=(expr)` / `style:(Handle)=(expr)` — one CSS declaration, written
     /// via `setProperty` (no
     /// whole-attribute reparse). `prop` allows hyphens and `--custom` names.
-    StyleProp { name: TokenStream2, span: proc_macro2::Span, expr: Expr },
+    StyleProp {
+        name: TokenStream2,
+        span: proc_macro2::Span,
+        expr: Expr,
+    },
     /// `painting=(expr)` on a `canvas` — the picture as a live list of layers, each a
     /// live list of shapes. The `<canvas>` restriction is checked at the parse: there
     /// is no other element the runtime can draw on.
@@ -193,7 +210,9 @@ enum EventChannel {
 fn event_channel(name: &str) -> Option<EventChannel> {
     match name {
         "measure" => Some(EventChannel::Measure),
-        _ => name.strip_prefix("on").map(|suffix| EventChannel::Dom(suffix.to_string())),
+        _ => name
+            .strip_prefix("on")
+            .map(|suffix| EventChannel::Dom(suffix.to_string())),
     }
 }
 
@@ -213,15 +232,15 @@ struct EventAttr {
 /// `?name=(expr)` for the optional half. The same two spellings an element attribute has,
 /// plus the `?` that says which struct a prop belongs to — so the call site never has to be
 /// matched against a field list to be understood.
-fn parse_props(
-    input: ParseStream,
-) -> Result<(Vec<(Ident, Expr, bool)>, Vec<(Ident, Expr, bool)>)> {
+fn parse_props(input: ParseStream) -> Result<(Vec<(Ident, Expr, bool)>, Vec<(Ident, Expr, bool)>)> {
     let (mut required, mut optional) = (Vec::new(), Vec::new());
     loop {
         let optional_prop = input.peek(Token![?]);
         if optional_prop {
             input.parse::<Token![?]>()?;
-        } else if !(input.peek(Ident::peek_any) && (input.peek2(Token![=]) || input.peek2(Token![=>]))) {
+        } else if !(input.peek(Ident::peek_any)
+            && (input.peek2(Token![=]) || input.peek2(Token![=>])))
+        {
             break;
         }
         let name: Ident = input.call(Ident::parse_any)?;
@@ -355,7 +374,10 @@ fn desugar_dollars(input: TokenStream2, cx: &Ident) -> TokenStream2 {
             },
             proc_macro2::TokenTree::Group(g) => {
                 let inner = desugar_dollars(g.stream(), cx);
-                out.extend(std::iter::once(proc_macro2::TokenTree::Group(Group::new(g.delimiter(), inner))));
+                out.extend(std::iter::once(proc_macro2::TokenTree::Group(Group::new(
+                    g.delimiter(),
+                    inner,
+                ))));
             }
             other => out.extend(std::iter::once(other)),
         }
@@ -401,7 +423,10 @@ fn parse_node(input: ParseStream) -> Result<Node> {
     if eat_dollar(input) {
         let ident: Ident = input.parse()?;
         let cx = cx_ident();
-        return Ok(Node::Splice { expr: syn::parse_quote!(#ident.get(#cx)), reactive: true });
+        return Ok(Node::Splice {
+            expr: syn::parse_quote!(#ident.get(#cx)),
+            reactive: true,
+        });
     }
 
     // @keyword → directive
@@ -441,7 +466,10 @@ fn parse_node(input: ParseStream) -> Result<Node> {
     if input.peek(Ident::peek_any) {
         let ahead = input.fork();
         let tag: Ident = ahead.call(Ident::parse_any)?;
-        if tag.to_string().starts_with(|c: char| c.is_ascii_uppercase()) {
+        if tag
+            .to_string()
+            .starts_with(|c: char| c.is_ascii_uppercase())
+        {
             let component: Ident = input.call(Ident::parse_any)?;
             let (required, optional) = parse_props(input)?;
             // A trailing `{ … }` block is the `children` slot: the component wraps what the
@@ -453,7 +481,12 @@ fn parse_node(input: ParseStream) -> Result<Node> {
             } else {
                 None
             };
-            return Ok(Node::Directive(Directive::Component { component, required, optional, children }));
+            return Ok(Node::Directive(Directive::Component {
+                component,
+                required,
+                optional,
+                children,
+            }));
         }
     }
 
@@ -633,7 +666,12 @@ fn parse_directive(input: ParseStream) -> Result<Node> {
         } else {
             None
         };
-        Ok(Node::Directive(Directive::Component { component, required, optional, children }))
+        Ok(Node::Directive(Directive::Component {
+            component,
+            required,
+            optional,
+            children,
+        }))
     }
 }
 
@@ -716,7 +754,11 @@ fn parse_element(input: ParseStream) -> Result<Element> {
                 let val_content;
                 parenthesized!(val_content in input);
                 let expr: Expr = parse_reactive_expr(&val_content)?;
-                attrs.push(Attr::StyleProp { name: quote! { #prop }, span, expr });
+                attrs.push(Attr::StyleProp {
+                    name: quote! { #prop },
+                    span,
+                    expr,
+                });
             } else if name_str == "painting" && fork.peek(Token![=]) && fork.peek2(token::Paren) {
                 // painting=(expr) — a canvas's picture: a live list of layers, each a
                 // live list of shapes. The list is a value, taken once like a `@for`'s
@@ -773,7 +815,11 @@ fn parse_element(input: ParseStream) -> Result<Element> {
                     // An event handler is `Event -> Option<M>`, not a reactive read — no
                     // `$` desugaring (it has no reactive context).
                     let expr: Expr = syn::parse2(raw)?;
-                    events.push(EventAttr { channel, mapper: expr, to_mailbox: false });
+                    events.push(EventAttr {
+                        channel,
+                        mapper: expr,
+                        to_mailbox: false,
+                    });
                 } else {
                     let cx = cx_ident();
                     let expr: Expr = syn::parse2(desugar_dollars(raw, &cx))?;
@@ -957,11 +1003,17 @@ enum IrNode {
     /// A one-shot `(expr)`: its leaf kind is `<__RenderT{param} as RenderKind>::KIND`,
     /// so the template picks TextSlot/AnchorSlot per-monomorphization. `param` indexes
     /// the interpolant's threaded type generic and its `.place` value.
-    Interp { slot: u32, param: usize },
+    Interp {
+        slot: u32,
+        param: usize,
+    },
     /// A live marker. `name`/`key` are token streams — a keyed marker's key is
     /// a runtime expression, which forces the whole template into its runtime-built
     /// form.
-    Live { name: TokenStream2, key: Option<TokenStream2> },
+    Live {
+        name: TokenStream2,
+        key: Option<TokenStream2>,
+    },
     /// `@dangerouslyUnescapedHtml(expr)`: the markup expression, read at view
     /// construction — so a template holding one is always runtime-built.
     UnescapedHtml(TokenStream2),
@@ -1005,7 +1057,13 @@ fn ir_node_tokens(node: &IrNode, out: &mut Vec<TokenStream2>) {
                 }
             });
         }
-        IrNode::Element { tag, attrs, css_local, slot, children } => {
+        IrNode::Element {
+            tag,
+            attrs,
+            css_local,
+            slot,
+            children,
+        } => {
             let attr_tokens = attrs.iter().map(|(name, value)| {
                 quote! {
                     ::idyll::template::TplAttr {
@@ -1059,7 +1117,13 @@ fn ir_node_tokens(node: &IrNode, out: &mut Vec<TokenStream2>) {
 /// node carries a runtime expression (a keyed live marker's key).
 fn ir_node_stmts(node: &IrNode, out: &mut Vec<TokenStream2>) {
     match node {
-        IrNode::Element { tag, attrs, css_local, slot, children } => {
+        IrNode::Element {
+            tag,
+            attrs,
+            css_local,
+            slot,
+            children,
+        } => {
             // The header's direct-child count is structural, so the header builds
             // through the one Element emitter; children recurse in statement form.
             let header_node = IrNode::Element {
@@ -1206,10 +1270,12 @@ impl Codegen {
                 })
             };
         }
-        let tparams: Vec<Ident> =
-            (0..self.interps.len()).map(|i| format_ident!("__IdyllRenderT{i}")).collect();
-        let locals: Vec<Ident> =
-            (0..self.interps.len()).map(|i| format_ident!("__idyll_interp{i}")).collect();
+        let tparams: Vec<Ident> = (0..self.interps.len())
+            .map(|i| format_ident!("__IdyllRenderT{i}"))
+            .collect();
+        let locals: Vec<Ident> = (0..self.interps.len())
+            .map(|i| format_ident!("__idyll_interp{i}"))
+            .collect();
         quote! {
             ::idyll::LiveView::new({
                 struct __IdyllTpl<#(#tparams),*>(::core::marker::PhantomData<(#(#tparams,)*)>);
@@ -1276,7 +1342,11 @@ impl Codegen {
                 if *reactive {
                     // `$sig` — a devirtualised binding, always text (unchanged).
                     self.push_ir(IrNode::TextSlot(slot));
-                    self.leaves.push(Leaf { slot, kind: LeafKind::Text, expr: expr.clone() });
+                    self.leaves.push(Leaf {
+                        slot,
+                        kind: LeafKind::Text,
+                        expr: expr.clone(),
+                    });
                 } else {
                     // A one-shot `(expr)`: text or a `(view)` mount, dispatched at
                     // construction by the value's `RenderKind`.
@@ -1285,7 +1355,6 @@ impl Codegen {
                     self.push_ir(IrNode::Interp { slot, param });
                 }
             }
-
 
             Node::Element(el) => {
                 self.gen_element(el);
@@ -1298,25 +1367,27 @@ impl Codegen {
     }
 
     fn gen_element(&mut self, el: &Element) {
-
         // Dynamic attributes/events bind through a slot on the element; a reactive
         // css entry makes the class attribute itself a binding.
-        let has_dynamic_css = el.css.iter().any(|entry| !matches!(entry, CssEntryAst::Static(_)));
-        let needs_slot = el
-            .attrs
+        let has_dynamic_css = el
+            .css
             .iter()
-            .any(|a| {
-                matches!(
-                    a,
-                    Attr::Value { .. }
-                        | Attr::Bool { .. }
-                        | Attr::StyleProp { .. }
-                        | Attr::Painting { .. }
-                )
-            })
-            || !el.events.is_empty()
+            .any(|entry| !matches!(entry, CssEntryAst::Static(_)));
+        let needs_slot = el.attrs.iter().any(|a| {
+            matches!(
+                a,
+                Attr::Value { .. }
+                    | Attr::Bool { .. }
+                    | Attr::StyleProp { .. }
+                    | Attr::Painting { .. }
+            )
+        }) || !el.events.is_empty()
             || has_dynamic_css;
-        let slot = if needs_slot { Some(self.next_slot()) } else { None };
+        let slot = if needs_slot {
+            Some(self.next_slot())
+        } else {
+            None
+        };
 
         // Dynamic attrs → leaf arms against the slot.
         for attr in &el.attrs {
@@ -1340,7 +1411,10 @@ impl Codegen {
                 }
                 Attr::Painting { expr, .. } => {
                     let s = slot.expect("a painting implies a slot");
-                    self.paintings.push(PaintingLeaf { slot: s, expr: expr.clone() });
+                    self.paintings.push(PaintingLeaf {
+                        slot: s,
+                        expr: expr.clone(),
+                    });
                 }
                 Attr::Bool { name, expr } => {
                     let s = slot.expect("bool attr implies a slot");
@@ -1421,7 +1495,11 @@ impl Codegen {
             // Delivery: every statically nameable entry's rules ride in-band — the
             // union, not the merge, because last-wins losers can activate at runtime.
             // Open entries rest on the document's universe sheet.
-            let nameable: Vec<&Expr> = el.css.iter().filter_map(CssEntryAst::nameable_style).collect();
+            let nameable: Vec<&Expr> = el
+                .css
+                .iter()
+                .filter_map(CssEntryAst::nameable_style)
+                .collect();
             if !nameable.is_empty() {
                 self.builder_calls.push(quote! {
                     .with_styles(::idyll_styles::rule_union(&[#((#nameable).atoms()),*]))
@@ -1510,8 +1588,7 @@ impl Codegen {
                 };
                 let then_capture_clones = branch_capture_clones(then_nodes);
                 let then_child_preludes = then_gen.child_preludes;
-                let then_view =
-                    quote! { #then_ctor #(#then_places)* #(#then_calls)* #then_block };
+                let then_view = quote! { #then_ctor #(#then_places)* #(#then_calls)* #then_block };
                 // A component-bearing arm `spawn_child`s in its build, so the dispatch closure
                 // needs the frame captured.
                 let mut needs_frame = then_gen.child_counter > 0;
@@ -1776,20 +1853,27 @@ impl Codegen {
                 // Pass 2: arm bodies. Each just returns its view (children ride placement_guards).
                 let arm_bodies: Vec<TokenStream2> = arm_data
                     .into_iter()
-                    .map(|ArmPieces { pat, capture_clones: cap, view, child_preludes }| {
-                        quote! {
-                            {
-                                #cap
-                                match #match_value.get(#cx) {
-                                    #pat => {
-                                        #(#child_preludes)*
-                                        ::idyll::live_view::FragmentOut::LiveView({ #view })
+                    .map(
+                        |ArmPieces {
+                             pat,
+                             capture_clones: cap,
+                             view,
+                             child_preludes,
+                         }| {
+                            quote! {
+                                {
+                                    #cap
+                                    match #match_value.get(#cx) {
+                                        #pat => {
+                                            #(#child_preludes)*
+                                            ::idyll::live_view::FragmentOut::LiveView({ #view })
+                                        }
+                                        _ => ::idyll::live_view::FragmentOut::None,
                                     }
-                                    _ => ::idyll::live_view::FragmentOut::None,
                                 }
                             }
-                        }
-                    })
+                        },
+                    )
                     .collect();
 
                 self.fragment_leaves.push(FragmentLeaf {
@@ -1815,7 +1899,12 @@ impl Codegen {
                 });
             }
 
-            Directive::Component { component, required, optional, children } => {
+            Directive::Component {
+                component,
+                required,
+                optional,
+                children,
+            } => {
                 let slot = self.next_slot();
                 self.push_ir(IrNode::AnchorSlot(slot));
                 // `name=>(…)` among a child's props is a way back to *this* component: it
@@ -1837,7 +1926,8 @@ impl Codegen {
                     // like a top-level tree.
                     let mut recipe_gen = Codegen::new();
                     recipe_gen.gen_nodes(children_nodes);
-                    let recipe = recipe_gen.finish(&format_ident!("__IDYLL_SLOT_TPL"), children_nodes);
+                    let recipe =
+                        recipe_gen.finish(&format_ident!("__IDYLL_SLOT_TPL"), children_nodes);
                     // Clone the block's free vars (and the sender) into this scope, so the recipe
                     // re-clones them per placement (it is `Fn`) and the parent view keeps its own.
                     let free = free_captures(children_nodes, &BTreeSet::new());
@@ -1853,14 +1943,22 @@ impl Codegen {
                             )
                         };
                     });
-                    required.push((format_ident!("children"), syn::parse_quote!(#slot_local), false));
+                    required.push((
+                        format_ident!("children"),
+                        syn::parse_quote!(#slot_local),
+                        false,
+                    ));
                 }
                 let required = &required;
 
                 // The props outlive the setup that built them, so every value they read is
                 // captured by value — the discipline every other closure in a view follows.
-                let req_clones = required.iter().map(|(_, expr, _)| expr_capture_clones(expr));
-                let opt_clones = optional.iter().map(|(_, expr, _)| expr_capture_clones(expr));
+                let req_clones = required
+                    .iter()
+                    .map(|(_, expr, _)| expr_capture_clones(expr));
+                let opt_clones = optional
+                    .iter()
+                    .map(|(_, expr, _)| expr_capture_clones(expr));
                 let field = |(name, expr, to_mailbox): &(Ident, Expr, bool)| match to_mailbox {
                     true => quote! { #name: ::idyll::callback_from_sender(#sender.clone(), #expr) },
                     false => quote! { #name: #expr },
@@ -1880,8 +1978,10 @@ impl Codegen {
                 // component — not its `…Required`/`…Optional` pair; a local `type` alias lets the
                 // trait-projected type carry struct-literal syntax.
                 let cid = format_ident!("__idyll_child_{}", n);
-                self.child_preludes.push(quote! { let #cid = ::idyll::fresh_child_id(); });
-                self.builder_calls.push(quote! { .child_anchor(#slot, #cid) });
+                self.child_preludes
+                    .push(quote! { let #cid = ::idyll::fresh_child_id(); });
+                self.builder_calls
+                    .push(quote! { .child_anchor(#slot, #cid) });
                 let build_required = quote! {{
                     type __IdyllRequired = <#component as ::idyll::Component>::Required;
                     #(#req_clones)*
@@ -1937,7 +2037,10 @@ impl Codegen {
                 if key_tokens.is_some() {
                     self.has_runtime_ir = true;
                 }
-                self.push_ir(IrNode::Live { name: name_tokens, key: key_tokens });
+                self.push_ir(IrNode::Live {
+                    name: name_tokens,
+                    key: key_tokens,
+                });
             }
         }
     }
@@ -2202,20 +2305,26 @@ impl Codegen {
         } else {
             let cx = cx_ident();
             let envs = self.fragment_leaves.iter().map(|leaf| &leaf.env);
-            let op_arms = self.fragment_leaves.iter().enumerate().flat_map(|(index, leaf)| {
-                let f = index as u32;
-                let mut arms = Vec::new();
-                if let Some(select) = &leaf.select {
-                    arms.push(quote! { ::idyll::live_view::FragmentOp::Select(#f) => #select, });
-                }
-                for (position, arm) in leaf.arms.iter().enumerate() {
-                    let a = position as u32;
-                    arms.push(quote! {
-                        ::idyll::live_view::FragmentOp::Arm { fragment: #f, arm: #a } => #arm,
-                    });
-                }
-                arms
-            });
+            let op_arms = self
+                .fragment_leaves
+                .iter()
+                .enumerate()
+                .flat_map(|(index, leaf)| {
+                    let f = index as u32;
+                    let mut arms = Vec::new();
+                    if let Some(select) = &leaf.select {
+                        arms.push(
+                            quote! { ::idyll::live_view::FragmentOp::Select(#f) => #select, },
+                        );
+                    }
+                    for (position, arm) in leaf.arms.iter().enumerate() {
+                        let a = position as u32;
+                        arms.push(quote! {
+                            ::idyll::live_view::FragmentOp::Arm { fragment: #f, arm: #a } => #arm,
+                        });
+                    }
+                    arms
+                });
             quote! {{
                 #(#envs)*
                 ::std::rc::Rc::new(
@@ -2281,10 +2390,35 @@ fn island_name(component: &Ident) -> String {
 fn is_p_closing(tag: &str) -> bool {
     matches!(
         tag,
-        "address" | "article" | "aside" | "blockquote" | "details" | "div" | "dl" | "fieldset"
-            | "figcaption" | "figure" | "footer" | "form" | "h1" | "h2" | "h3" | "h4" | "h5"
-            | "h6" | "header" | "hr" | "main" | "menu" | "nav" | "ol" | "p" | "pre" | "section"
-            | "table" | "ul"
+        "address"
+            | "article"
+            | "aside"
+            | "blockquote"
+            | "details"
+            | "div"
+            | "dl"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "header"
+            | "hr"
+            | "main"
+            | "menu"
+            | "nav"
+            | "ol"
+            | "p"
+            | "pre"
+            | "section"
+            | "table"
+            | "ul"
     )
 }
 
@@ -2338,7 +2472,11 @@ fn validate_parser_fixed_points(nodes: &[Node], parent: Option<&Ident>) -> syn::
                 validate_parser_fixed_points(&el.children, Some(&el.tag))?;
             }
             Node::Directive(directive) => match directive {
-                Directive::If { then_nodes, else_nodes, .. } => {
+                Directive::If {
+                    then_nodes,
+                    else_nodes,
+                    ..
+                } => {
                     validate_parser_fixed_points(then_nodes, parent)?;
                     if let Some(else_nodes) = else_nodes {
                         validate_parser_fixed_points(else_nodes, parent)?;
@@ -2413,10 +2551,7 @@ fn spawns_child(nodes: &[Node]) -> bool {
             then_nodes,
             else_nodes,
             ..
-        }) => {
-            spawns_child(then_nodes)
-                || else_nodes.as_deref().is_some_and(spawns_child)
-        }
+        }) => spawns_child(then_nodes) || else_nodes.as_deref().is_some_and(spawns_child),
         Node::Directive(Directive::For { body, .. }) => spawns_child(body),
         Node::Directive(Directive::Match { arms, .. }) => {
             arms.iter().any(|arm| spawns_child(&arm.body))
@@ -2508,7 +2643,12 @@ impl CaptureCollector {
                     self.with_bound_pat(&arm.pat, |this| this.visit_nodes(&arm.body));
                 }
             }
-            Node::Directive(Directive::Component { required, optional, children, .. }) => {
+            Node::Directive(Directive::Component {
+                required,
+                optional,
+                children,
+                ..
+            }) => {
                 for (_, expr, _) in required.iter().chain(optional.iter()) {
                     self.visit_expr(expr);
                 }
@@ -2617,7 +2757,9 @@ struct CommaExprs(syn::punctuated::Punctuated<Expr, syn::Token![,]>);
 
 impl syn::parse::Parse for CommaExprs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(CommaExprs(syn::punctuated::Punctuated::parse_terminated(input)?))
+        Ok(CommaExprs(syn::punctuated::Punctuated::parse_terminated(
+            input,
+        )?))
     }
 }
 
@@ -2779,7 +2921,11 @@ fn validate_islands_keyed_in_rows(nodes: &[Node], in_for: bool) -> Result<()> {
     for node in nodes {
         match node {
             Node::Element(el) => validate_islands_keyed_in_rows(&el.children, in_for)?,
-            Node::Directive(Directive::If { then_nodes, else_nodes, .. }) => {
+            Node::Directive(Directive::If {
+                then_nodes,
+                else_nodes,
+                ..
+            }) => {
                 validate_islands_keyed_in_rows(then_nodes, in_for)?;
                 if let Some(nodes) = else_nodes {
                     validate_islands_keyed_in_rows(nodes, in_for)?;
@@ -2795,10 +2941,15 @@ fn validate_islands_keyed_in_rows(nodes: &[Node], in_for: bool) -> Result<()> {
             }
             // A component's children block is a slot recipe rebuilt per placement —
             // positional identity inside it is exactly as fatal as anywhere else.
-            Node::Directive(Directive::Component { children: Some(children), .. }) => {
+            Node::Directive(Directive::Component {
+                children: Some(children),
+                ..
+            }) => {
                 validate_islands_keyed_in_rows(children, in_for)?;
             }
-            Node::Directive(Directive::Live { name, key: None, .. }) if in_for => {
+            Node::Directive(Directive::Live {
+                name, key: None, ..
+            }) if in_for => {
                 return Err(syn::Error::new_spanned(
                     name,
                     "an unkeyed live inside `@for` is positional identity under a \
@@ -2817,7 +2968,11 @@ fn validate_no_eager_content(nodes: &[Node]) -> Result<()> {
     for node in nodes {
         match node {
             Node::Element(el) => validate_no_eager_content(&el.children)?,
-            Node::Directive(Directive::If { then_nodes, else_nodes, .. }) => {
+            Node::Directive(Directive::If {
+                then_nodes,
+                else_nodes,
+                ..
+            }) => {
                 validate_no_eager_content(then_nodes)?;
                 if let Some(nodes) = else_nodes {
                     validate_no_eager_content(nodes)?;
@@ -2829,7 +2984,10 @@ fn validate_no_eager_content(nodes: &[Node]) -> Result<()> {
                     validate_no_eager_content(&arm.body)?;
                 }
             }
-            Node::Directive(Directive::Component { children: Some(children), .. }) => {
+            Node::Directive(Directive::Component {
+                children: Some(children),
+                ..
+            }) => {
                 validate_no_eager_content(children)?;
             }
             Node::Directive(Directive::Content { expr }) => {
@@ -3052,7 +3210,12 @@ fn view_element(el: &Element) -> Result<TokenStream2> {
 
 fn view_directive(dir: &Directive) -> Result<TokenStream2> {
     match dir {
-        Directive::If { condition, then_nodes, else_nodes, keep } => {
+        Directive::If {
+            condition,
+            then_nodes,
+            else_nodes,
+            keep,
+        } => {
             if *keep {
                 // Content is eager Rust control flow — there is no mounted branch to
                 // retain, so accepting `[keep]` would silently promise semantics
@@ -3072,7 +3235,12 @@ fn view_directive(dir: &Directive) -> Result<TokenStream2> {
                 if #condition { #(#then_stmts)* } else { #(#else_stmts)* }
             })
         }
-        Directive::For { pat, iter, key, body } => {
+        Directive::For {
+            pat,
+            iter,
+            key,
+            body,
+        } => {
             if let Some(key) = key {
                 return Err(syn::Error::new_spanned(
                     key,
@@ -3241,7 +3409,9 @@ fn msg_of_ctx(ty: &syn::Type) -> Result<syn::Type> {
              handles, or `Never` if it handles none",
         )
     };
-    let syn::Type::Path(path) = ty else { return Err(wrong()) };
+    let syn::Type::Path(path) = ty else {
+        return Err(wrong());
+    };
     let syn::PathArguments::AngleBracketed(args) =
         &path.path.segments.last().ok_or_else(wrong)?.arguments
     else {
@@ -3254,9 +3424,17 @@ fn msg_of_ctx(ty: &syn::Type) -> Result<syn::Type> {
 }
 
 fn component_decl(item: syn::ItemFn) -> Result<TokenStream2> {
-    let syn::ItemFn { attrs, vis, sig, block: body } = item;
+    let syn::ItemFn {
+        attrs,
+        vis,
+        sig,
+        block: body,
+    } = item;
     let name = sig.ident;
-    if !name.to_string().starts_with(|c: char| c.is_ascii_uppercase()) {
+    if !name
+        .to_string()
+        .starts_with(|c: char| c.is_ascii_uppercase())
+    {
         return Err(syn::Error::new(
             name.span(),
             "a component's name is capitalised — that is what tells it from an element at a \
@@ -3390,7 +3568,10 @@ fn value_enum_impl(input: syn::ItemEnum) -> Result<TokenStream2> {
     let name = &input.ident;
     let name_str = name.to_string();
     if !input.generics.params.is_empty() {
-        return Err(syn::Error::new_spanned(&input.generics, "#[value] enums are not generic"));
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            "#[value] enums are not generic",
+        ));
     }
 
     // A schema sum type: each variant publishes its own field defs (empty = unit) and
@@ -3408,8 +3589,7 @@ fn value_enum_impl(input: syn::ItemEnum) -> Result<TokenStream2> {
                     .named
                     .iter()
                     .map(|field| {
-                        let field_name =
-                            field.ident.as_ref().expect("named field").to_string();
+                        let field_name = field.ident.as_ref().expect("named field").to_string();
                         let ty = schema_field_type(&field.ty)?;
                         if let Some(target) = schema_register_target(&field.ty) {
                             register_calls.push(quote! {
@@ -3543,7 +3723,11 @@ fn schema_type_impl(input: syn::ItemStruct, is_node: bool) -> Result<TokenStream
 
     // Reachability: register self (into the right section), then everything the
     // fields reach — the schema is the closure of the entry points.
-    let section = if is_node { quote! { nodes } } else { quote! { values } };
+    let section = if is_node {
+        quote! { nodes }
+    } else {
+        quote! { values }
+    };
     let field_registers = register_calls(field_types.iter().copied());
 
     Ok(quote! {
@@ -3585,8 +3769,8 @@ fn schema_type_impl(input: syn::ItemStruct, is_node: bool) -> Result<TokenStream
 /// not a surprise in a client build.
 fn schema_field_type(ty: &syn::Type) -> Result<TokenStream2> {
     const SCALARS: &[&str] = &[
-        "String", "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16",
-        "i32", "i64", "i128", "isize", "f32", "f64",
+        "String", "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32",
+        "i64", "i128", "isize", "f32", "f64",
     ];
 
     let syn::Type::Path(path) = ty else {
@@ -3596,7 +3780,11 @@ fn schema_field_type(ty: &syn::Type) -> Result<TokenStream2> {
              record, or `Vec`/`Option` of those",
         ));
     };
-    let segment = path.path.segments.last().expect("a type path has a segment");
+    let segment = path
+        .path
+        .segments
+        .last()
+        .expect("a type path has a segment");
     let ident = segment.ident.to_string();
 
     if SCALARS.contains(&ident.as_str()) {
@@ -3610,7 +3798,10 @@ fn schema_field_type(ty: &syn::Type) -> Result<TokenStream2> {
                 return Ok(inner);
             }
         }
-        Err(syn::Error::new_spanned(ty, format!("`{ident}` needs a type argument")))
+        Err(syn::Error::new_spanned(
+            ty,
+            format!("`{ident}` needs a type argument"),
+        ))
     };
 
     match ident.as_str() {
@@ -3619,7 +3810,10 @@ fn schema_field_type(ty: &syn::Type) -> Result<TokenStream2> {
         "Content" => Ok(quote! { ::idyll_data::FieldType::content() }),
         "Ref" => {
             let syn::Type::Path(target) = inner()? else {
-                return Err(syn::Error::new_spanned(ty, "`Ref<…>` must name a Node type"));
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "`Ref<…>` must name a Node type",
+                ));
             };
             let node = target.path.segments.last().unwrap().ident.to_string();
             Ok(quote! { ::idyll_data::FieldType::reference(#node) })
@@ -3710,14 +3904,18 @@ fn parse_resolver_fn(func: &ItemFn, attr_name: &str) -> Result<ResolverFn> {
             other => {
                 return Err(syn::Error::new_spanned(
                     other,
-                    format!("{attr_name}'s first parameter must be the source, taken by reference: `&Src`"),
+                    format!(
+                    "{attr_name}'s first parameter must be the source, taken by reference: `&Src`"
+                ),
                 ))
             }
         },
         _ => {
             return Err(syn::Error::new_spanned(
                 &func.sig,
-                format!("{attr_name} requires a source parameter first: `async fn f(src: &Src, …)`"),
+                format!(
+                    "{attr_name} requires a source parameter first: `async fn f(src: &Src, …)`"
+                ),
             ))
         }
     };
@@ -3726,7 +3924,10 @@ fn parse_resolver_fn(func: &ItemFn, attr_name: &str) -> Result<ResolverFn> {
     let mut arg_types: Vec<syn::Type> = Vec::new();
     for input in inputs {
         let syn::FnArg::Typed(pat) = input else {
-            return Err(syn::Error::new_spanned(input, format!("{attr_name} does not take `self`")));
+            return Err(syn::Error::new_spanned(
+                input,
+                format!("{attr_name} does not take `self`"),
+            ));
         };
         let syn::Pat::Ident(pat_ident) = &*pat.pat else {
             return Err(syn::Error::new_spanned(
@@ -3748,7 +3949,10 @@ fn parse_resolver_fn(func: &ItemFn, attr_name: &str) -> Result<ResolverFn> {
         }
     };
     let out_ok = result_ok_type(&output_ty).ok_or_else(|| {
-        syn::Error::new_spanned(&output_ty, format!("{attr_name} must return a `Result<T, E>`"))
+        syn::Error::new_spanned(
+            &output_ty,
+            format!("{attr_name} must return a `Result<T, E>`"),
+        )
     })?;
 
     Ok(ResolverFn {
@@ -3767,10 +3971,12 @@ fn parse_resolver_fn(func: &ItemFn, attr_name: &str) -> Result<ResolverFn> {
 /// schema type (node, value, or enum — its own `register` knows which).
 fn schema_register_target(ty: &syn::Type) -> Option<&syn::Type> {
     const SCALARS: &[&str] = &[
-        "String", "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16",
-        "i32", "i64", "i128", "isize", "f32", "f64",
+        "String", "bool", "char", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32",
+        "i64", "i128", "isize", "f32", "f64",
     ];
-    let syn::Type::Path(path) = ty else { return None };
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
     let segment = path.path.segments.last()?;
     let ident = segment.ident.to_string();
     if SCALARS.contains(&ident.as_str()) {
@@ -3815,8 +4021,17 @@ fn describe_args(sig: &ResolverFn) -> Result<Vec<TokenStream2>> {
 /// The typed execution glue shared by `#[root]` and `#[mutation]`: decode each named
 /// variable into its typed parameter, call the fn, box the error.
 fn resolver_body(sig: &ResolverFn) -> TokenStream2 {
-    let ResolverFn { name, src_ty, arg_idents, arg_types, .. } = sig;
-    let arg_strs = arg_idents.iter().map(|ident| ident.to_string()).collect::<Vec<_>>();
+    let ResolverFn {
+        name,
+        src_ty,
+        arg_idents,
+        arg_types,
+        ..
+    } = sig;
+    let arg_strs = arg_idents
+        .iter()
+        .map(|ident| ident.to_string())
+        .collect::<Vec<_>>();
     quote! {
         |__src: #src_ty, __vars: ::idyll_data::serde_json::Value| async move {
             #(
@@ -3840,13 +4055,17 @@ fn root_impl(mut func: ItemFn) -> Result<TokenStream2> {
     func.sig.ident = hidden.clone();
     sig.name = hidden;
 
-    let ResolverFn { vis, src_ty, out_ok, .. } = &sig;
+    let ResolverFn {
+        vis,
+        src_ty,
+        out_ok,
+        ..
+    } = &sig;
     let name_str = entry_name.to_string();
     let (output_node, is_list) = root_output(out_ok)?;
     let args = describe_args(&sig)?;
     let body = resolver_body(&sig);
-    let registers =
-        register_calls(sig.arg_types.iter().chain(std::iter::once(&sig.out_ok)));
+    let registers = register_calls(sig.arg_types.iter().chain(std::iter::once(&sig.out_ok)));
 
     Ok(quote! {
         #func
@@ -3900,7 +4119,12 @@ fn mutation_handler_impl(wire: syn::LitStr, mut func: ItemFn) -> Result<TokenStr
     func.sig.ident = hidden.clone();
     sig.name = hidden;
 
-    let ResolverFn { vis, src_ty, out_ok, .. } = &sig;
+    let ResolverFn {
+        vis,
+        src_ty,
+        out_ok,
+        ..
+    } = &sig;
     let (output_node, is_list) = root_output(out_ok)?;
     if is_list {
         return Err(syn::Error::new_spanned(
@@ -3911,8 +4135,7 @@ fn mutation_handler_impl(wire: syn::LitStr, mut func: ItemFn) -> Result<TokenStr
 
     let args = describe_args(&sig)?;
     let body = resolver_body(&sig);
-    let registers =
-        register_calls(sig.arg_types.iter().chain(std::iter::once(&sig.out_ok)));
+    let registers = register_calls(sig.arg_types.iter().chain(std::iter::once(&sig.out_ok)));
 
     Ok(quote! {
         #func
@@ -3939,18 +4162,26 @@ fn mutation_handler_impl(wire: syn::LitStr, mut func: ItemFn) -> Result<TokenStr
 /// inside its handle).
 #[proc_macro_derive(Queries)]
 pub fn derive_queries(input: TokenStream) -> TokenStream {
-    entry_group_impl(parse_macro_input!(input as syn::DeriveInput), "Queries", "RootHandle")
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
+    entry_group_impl(
+        parse_macro_input!(input as syn::DeriveInput),
+        "Queries",
+        "RootHandle",
+    )
+    .unwrap_or_else(|err| err.to_compile_error())
+    .into()
 }
 
 /// `#[derive(Mutations)]` — the mutation twin of [`Queries`](derive_queries). An app
 /// with no mutations derives it on a unit struct.
 #[proc_macro_derive(Mutations)]
 pub fn derive_mutations(input: TokenStream) -> TokenStream {
-    entry_group_impl(parse_macro_input!(input as syn::DeriveInput), "Mutations", "MutationHandle")
-        .unwrap_or_else(|err| err.to_compile_error())
-        .into()
+    entry_group_impl(
+        parse_macro_input!(input as syn::DeriveInput),
+        "Mutations",
+        "MutationHandle",
+    )
+    .unwrap_or_else(|err| err.to_compile_error())
+    .into()
 }
 
 fn entry_group_impl(
@@ -3983,9 +4214,13 @@ fn entry_group_impl(
     // The data source is the handles': every field is `Handle<Src>`, so the first
     // field's argument names it (the vec's type holds the rest to it).
     let src = (|| -> Option<&syn::Type> {
-        let syn::Type::Path(path) = &fields[0].ty else { return None };
+        let syn::Type::Path(path) = &fields[0].ty else {
+            return None;
+        };
         let segment = path.path.segments.last()?;
-        let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+        let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+            return None;
+        };
         args.args.iter().find_map(|arg| match arg {
             syn::GenericArgument::Type(ty) => Some(ty),
             _ => None,
@@ -3997,13 +4232,16 @@ fn entry_group_impl(
             format!("#[derive({trait_name})] fields are `{handle_name}<Src>` values"),
         )
     })?;
-    let accessors = fields.iter().enumerate().map(|(i, field)| match &field.ident {
-        Some(ident) => quote! { self.#ident },
-        None => {
-            let index = syn::Index::from(i);
-            quote! { self.#index }
-        }
-    });
+    let accessors = fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| match &field.ident {
+            Some(ident) => quote! { self.#ident },
+            None => {
+                let index = syn::Index::from(i);
+                quote! { self.#index }
+            }
+        });
 
     Ok(quote! {
         impl ::idyll_data::#trait_ident<#src> for #name {
@@ -4020,7 +4258,10 @@ fn entry_group_impl(
 fn root_output(out_ok: &syn::Type) -> Result<(String, bool)> {
     let node_name = |ty: &syn::Type| -> Result<String> {
         let syn::Type::Path(path) = ty else {
-            return Err(syn::Error::new_spanned(ty, "#[root] must yield a Node type"));
+            return Err(syn::Error::new_spanned(
+                ty,
+                "#[root] must yield a Node type",
+            ));
         };
         Ok(path.path.segments.last().unwrap().ident.to_string())
     };
@@ -4063,11 +4304,23 @@ fn result_ok_type(ty: &syn::Type) -> Option<syn::Type> {
 /// = edge list.
 enum FragSel {
     /// `route { Todos { … }, Prose {} }` — a sum-typed field, matched exhaustively.
-    Enum { field: Ident, variants: Vec<(Ident, Vec<FragSel>)> },
+    Enum {
+        field: Ident,
+        variants: Vec<(Ident, Vec<FragSel>)>,
+    },
     Leaf(Ident),
-    Spread { edge: Ident, child: Ident },
-    List { edge: Ident, child: Ident },
-    Optional { edge: Ident, child: Ident },
+    Spread {
+        edge: Ident,
+        child: Ident,
+    },
+    List {
+        edge: Ident,
+        child: Ident,
+    },
+    Optional {
+        edge: Ident,
+        child: Ident,
+    },
 }
 
 struct FragmentInput {
@@ -4166,7 +4419,10 @@ fn load_schema(span: proc_macro2::Span) -> Result<(idyll_schema::Schema, String)
         None => {
             let mut dir = std::path::PathBuf::from(
                 std::env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| {
-                    syn::Error::new(span, "CARGO_MANIFEST_DIR is unset — cannot locate schema.json")
+                    syn::Error::new(
+                        span,
+                        "CARGO_MANIFEST_DIR is unset — cannot locate schema.json",
+                    )
                 })?,
             );
             loop {
@@ -4190,7 +4446,10 @@ fn load_schema(span: proc_macro2::Span) -> Result<(idyll_schema::Schema, String)
     let schema = idyll_schema::Schema::from_json(&text).map_err(|err| {
         syn::Error::new(
             span,
-            format!("{} does not parse as a published schema: {err}", path.display()),
+            format!(
+                "{} does not parse as a published schema: {err}",
+                path.display()
+            ),
         )
     })?;
     Ok((schema, path.display().to_string().replace('\\', "/")))
@@ -4237,7 +4496,6 @@ fn leaf_rust_type(
     }
 }
 
-
 /// One selection set, materialized against its **field scope** (a record's fields or
 /// one enum variant's): the `Sel` entries for the DEF, the projected field decls and
 /// their `from_record` inits (reading a `record` binding in scope), compile-time edge
@@ -4267,14 +4525,18 @@ fn materialize_selection(
         edge_checks: Vec::new(),
         nested_items: Vec::new(),
     };
-    let field_def = |field: &Ident| -> Result<&idyll_schema::FieldDef> {
-        scope_fields.iter().find(|f| f.name == field.to_string()).ok_or_else(|| {
-            syn::Error::new(
+    let field_def =
+        |field: &Ident| -> Result<&idyll_schema::FieldDef> {
+            scope_fields
+                .iter()
+                .find(|f| f.name == field.to_string())
+                .ok_or_else(|| {
+                    syn::Error::new(
                 field.span(),
                 format!("`{scope}` has no field `{field}` in the published schema ({schema_path})"),
             )
-        })
-    };
+                })
+        };
 
     for sel in selections {
         match sel {
@@ -4335,7 +4597,8 @@ fn materialize_selection(
                         ))
                     }
                 };
-                out.edge_checks.push(edge_target_check(child, &target, scope, &edge_str));
+                out.edge_checks
+                    .push(edge_target_check(child, &target, scope, &edge_str));
                 out.fields.push(quote! { #vis #edge: #field_ty });
                 out.inits.push(quote! { #edge: #init });
             }
@@ -4345,7 +4608,10 @@ fn materialize_selection(
                 let idyll_schema::FieldType::List { of } = &def.ty else {
                     return Err(syn::Error::new(
                         edge.span(),
-                        format!("`{scope}.{edge}` is {:?} in the schema — not a list edge", def.ty),
+                        format!(
+                            "`{scope}.{edge}` is {:?} in the schema — not a list edge",
+                            def.ty
+                        ),
                     ));
                 };
                 out.sel_entries.push(quote! {
@@ -4403,7 +4669,10 @@ fn materialize_selection(
                 let idyll_schema::FieldType::Optional { of } = &def.ty else {
                     return Err(syn::Error::new(
                         edge.span(),
-                        format!("`{scope}.{edge}` is {:?} in the schema — not an optional edge", def.ty),
+                        format!(
+                            "`{scope}.{edge}` is {:?} in the schema — not an optional edge",
+                            def.ty
+                        ),
                     ));
                 };
                 out.sel_entries.push(quote! {
@@ -4442,7 +4711,8 @@ fn materialize_selection(
                         ))
                     }
                 };
-                out.edge_checks.push(edge_target_check(child, &target, scope, &edge_str));
+                out.edge_checks
+                    .push(edge_target_check(child, &target, scope, &edge_str));
                 out.fields.push(quote! { #vis #edge: #field_ty });
                 out.inits.push(quote! { #edge: #init });
             }
@@ -4452,7 +4722,10 @@ fn materialize_selection(
                 let idyll_schema::FieldType::Value { value: enum_name } = &def.ty else {
                     return Err(syn::Error::new(
                         field.span(),
-                        format!("`{scope}.{field}` is {:?} in the schema — not a sum-typed field", def.ty),
+                        format!(
+                            "`{scope}.{field}` is {:?} in the schema — not a sum-typed field",
+                            def.ty
+                        ),
                     ));
                 };
                 let enum_def = schema.enumeration_def(enum_name).ok_or_else(|| {
@@ -4467,12 +4740,17 @@ fn materialize_selection(
                     if enum_def.variant(&variant.to_string()).is_none() {
                         return Err(syn::Error::new(
                             variant.span(),
-                            format!("`{enum_name}` has no variant `{variant}` in the published schema"),
+                            format!(
+                                "`{enum_name}` has no variant `{variant}` in the published schema"
+                            ),
                         ));
                     }
                 }
                 for schema_variant in &enum_def.variants {
-                    if !variants.iter().any(|(v, _)| v.to_string() == schema_variant.name) {
+                    if !variants
+                        .iter()
+                        .any(|(v, _)| v.to_string() == schema_variant.name)
+                    {
                         return Err(syn::Error::new(
                             field.span(),
                             format!(
@@ -4491,8 +4769,7 @@ fn materialize_selection(
                 let mut object_arms = Vec::new();
                 for (variant, selection) in variants {
                     let variant_str = variant.to_string();
-                    let schema_variant =
-                        enum_def.variant(&variant_str).expect("checked above");
+                    let schema_variant = enum_def.variant(&variant_str).expect("checked above");
                     let inner = materialize_selection(
                         schema,
                         schema_path,
@@ -4616,7 +4893,11 @@ pub fn fragment(input: TokenStream) -> TokenStream {
 }
 
 fn fragment_impl(input: FragmentInput) -> Result<TokenStream2> {
-    let FragmentInput { name, on, selections } = input;
+    let FragmentInput {
+        name,
+        on,
+        selections,
+    } = input;
     let (schema, schema_path) = load_schema(on.span())?;
 
     let on_str = on.to_string();
@@ -4641,7 +4922,9 @@ fn fragment_impl(input: FragmentInput) -> Result<TokenStream2> {
             .ok_or_else(|| {
                 syn::Error::new(
                     on.span(),
-                    format!("node `{on_str}` has no `id` field in the published schema ({schema_path})"),
+                    format!(
+                        "node `{on_str}` has no `id` field in the published schema ({schema_path})"
+                    ),
                 )
             })
             .and_then(|field| leaf_rust_type(&field.ty, on.span(), &schema))?;
@@ -4689,8 +4972,13 @@ fn fragment_impl(input: FragmentInput) -> Result<TokenStream2> {
         &name_str,
         quote! { pub },
     )?;
-    let MaterializedSelection { sel_entries, fields: struct_fields, inits: field_inits, edge_checks, nested_items } =
-        materialized;
+    let MaterializedSelection {
+        sel_entries,
+        fields: struct_fields,
+        inits: field_inits,
+        edge_checks,
+        nested_items,
+    } = materialized;
 
     Ok(quote! {
         /// The selected fields, as plain data: scalars typed from the published schema,
@@ -4918,7 +5206,12 @@ fn query_impl(input: QueryInput) -> Result<TokenStream2> {
             }
         }
         // The child fragment must be on the record this root yields.
-        edge_checks.push(edge_target_check(child, &root_def.output, "Query", &field_str));
+        edge_checks.push(edge_target_check(
+            child,
+            &root_def.output,
+            "Query",
+            &field_str,
+        ));
 
         let arg_params = root.args.iter().map(|(param, _)| param.to_string());
         let list = root.list;
@@ -5049,7 +5342,10 @@ struct MutationInput {
 /// owned data, so nesting is inline — no fragment refs, no reactive machinery.
 enum RespSel {
     Leaf(Ident),
-    Nested { field: Ident, children: Vec<RespSel> },
+    Nested {
+        field: Ident,
+        children: Vec<RespSel>,
+    },
 }
 
 fn parse_resp_selection(body: syn::parse::ParseStream) -> Result<Vec<RespSel>> {
@@ -5059,7 +5355,10 @@ fn parse_resp_selection(body: syn::parse::ParseStream) -> Result<Vec<RespSel>> {
         if body.peek(token::Brace) {
             let inner;
             braced!(inner in body);
-            selection.push(RespSel::Nested { field, children: parse_resp_selection(&inner)? });
+            selection.push(RespSel::Nested {
+                field,
+                children: parse_resp_selection(&inner)?,
+            });
         } else {
             selection.push(RespSel::Leaf(field));
         }
@@ -5117,7 +5416,13 @@ impl Parse for MutationInput {
         braced!(body in input);
         let selection = parse_resp_selection(&body)?;
 
-        Ok(MutationInput { name, vars, wire, args, selection })
+        Ok(MutationInput {
+            name,
+            vars,
+            wire,
+            args,
+            selection,
+        })
     }
 }
 
@@ -5140,7 +5445,13 @@ pub fn mutation(input: TokenStream) -> TokenStream {
 }
 
 fn mutation_impl(input: MutationInput) -> Result<TokenStream2> {
-    let MutationInput { name, vars, wire, args, selection } = input;
+    let MutationInput {
+        name,
+        vars,
+        wire,
+        args,
+        selection,
+    } = input;
     let (schema, schema_path) = load_schema(name.span())?;
 
     let wire_str = wire.value();
@@ -5169,11 +5480,16 @@ fn mutation_impl(input: MutationInput) -> Result<TokenStream2> {
         if !def.args.iter().any(|a| a.name == param_str) {
             return Err(syn::Error::new(
                 param.span(),
-                format!("mutation `{wire_str}` has no argument `{param_str}` in the published schema"),
+                format!(
+                    "mutation `{wire_str}` has no argument `{param_str}` in the published schema"
+                ),
             ));
         }
         let ty = declared_vars.get(&var.to_string()).ok_or_else(|| {
-            syn::Error::new(var.span(), format!("`${var}` is not declared in this operation's variables"))
+            syn::Error::new(
+                var.span(),
+                format!("`${var}` is not declared in this operation's variables"),
+            )
         })?;
         var_fields.push(quote! { pub #param: #ty });
         param_names.push(param_str);
@@ -5421,7 +5737,10 @@ fn parse_guest_entry(content: ParseStream) -> Result<GuestLive> {
             args.parse::<Token![,]>()?;
         }
     }
-    Ok(GuestLive { component, bindings })
+    Ok(GuestLive {
+        component,
+        bindings,
+    })
 }
 
 impl Parse for GuestInput {
@@ -5455,7 +5774,11 @@ impl Parse for GuestInput {
             next_kw = input.parse()?;
         }
         for entry in std::iter::once(&page).chain(head.as_ref()) {
-            if entry.bindings.iter().any(|b| matches!(b, GuestBinding::Key(_))) {
+            if entry
+                .bindings
+                .iter()
+                .any(|b| matches!(b, GuestBinding::Key(_)))
+            {
                 return Err(syn::Error::new_spanned(
                     &entry.component,
                     "the document mounts (`page`/`head`) take only `seed` — they have no markers to key",
@@ -5484,7 +5807,12 @@ impl Parse for GuestInput {
                 content.parse::<Token![,]>()?;
             }
         }
-        Ok(GuestInput { seed_ty, page, head, live })
+        Ok(GuestInput {
+            seed_ty,
+            page,
+            head,
+            live,
+        })
     }
 }
 
@@ -5504,7 +5832,12 @@ const SSR_WIT: &str = idyll_wit::SSR;
 /// missing page — is caught by the server's validation.
 #[proc_macro]
 pub fn guest(input: TokenStream) -> TokenStream {
-    let GuestInput { seed_ty, page, head, live } = parse_macro_input!(input as GuestInput);
+    let GuestInput {
+        seed_ty,
+        page,
+        head,
+        live,
+    } = parse_macro_input!(input as GuestInput);
 
     // The mount table: the reserved document mounts first, then the live. One
     // table, one `mount` — the page is the root component of the same machinery.
@@ -5520,16 +5853,19 @@ pub fn guest(input: TokenStream) -> TokenStream {
     // impl arm that polls it, and the mount arm that builds the variant. Boxing the
     // future keeps `IslandRoot` `Unpin` (safe projection) while the poll still lands on
     // a concrete future — a direct call, so the live's code is reachable.
-    let root_types: Vec<_> = (0..entries.len()).map(|i| format_ident!("Root{i}")).collect();
-    let make_fns: Vec<_> = (0..entries.len()).map(|i| format_ident!("make_root{i}")).collect();
+    let root_types: Vec<_> = (0..entries.len())
+        .map(|i| format_ident!("Root{i}"))
+        .collect();
+    let make_fns: Vec<_> = (0..entries.len())
+        .map(|i| format_ident!("make_root{i}"))
+        .collect();
     let variants: Vec<_> = (0..entries.len()).map(|i| format_ident!("V{i}")).collect();
 
     // The concrete arg types (the macro has them: the seed type, the key type), so
     // `make_root*` can spell its signature and the live's message type is the only thing
     // left to inference.
     let arg_types_for = |live: &GuestLive| -> Vec<proc_macro2::TokenStream> {
-        live
-            .bindings
+        live.bindings
             .iter()
             .map(|binding| match binding {
                 GuestBinding::Seed => quote! { #seed_ty },
@@ -6191,7 +6527,10 @@ fn parse_route_pattern(lit: &LitStr) -> Result<Vec<RoutePart>> {
     }
     if let Some(pos) = parts.iter().position(|p| matches!(p, RoutePart::Rest(_))) {
         if pos != parts.len() - 1 {
-            return Err(syn::Error::new(lit.span(), "a catch-all `{name*}` must be the last segment"));
+            return Err(syn::Error::new(
+                lit.span(),
+                "a catch-all `{name*}` must be the last segment",
+            ));
         }
     }
     Ok(parts)
@@ -6200,7 +6539,10 @@ fn parse_route_pattern(lit: &LitStr) -> Result<Vec<RoutePart>> {
 fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
     let name = &input.ident;
     let syn::Data::Enum(data) = &input.data else {
-        return Err(syn::Error::new_spanned(&input, "#[derive(Route)] is for an enum of route variants"));
+        return Err(syn::Error::new_spanned(
+            &input,
+            "#[derive(Route)] is for an enum of route variants",
+        ));
     };
     let idx = |i: usize| proc_macro2::Literal::usize_unsuffixed(i);
     let (mut parse_arms, mut url_arms) = (Vec::new(), Vec::new());
@@ -6211,11 +6553,17 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
             .attrs
             .iter()
             .find(|a| a.path().is_ident("route"))
-            .ok_or_else(|| syn::Error::new_spanned(variant, "each variant needs `#[route(\"…\")]`"))?;
+            .ok_or_else(|| {
+                syn::Error::new_spanned(variant, "each variant needs `#[route(\"…\")]`")
+            })?;
         let lit: LitStr = attr.parse_args()?;
         let parts = parse_route_pattern(&lit)?;
         let has_rest = matches!(parts.last(), Some(RoutePart::Rest(_)));
-        let fixed_len = if has_rest { parts.len() - 1 } else { parts.len() };
+        let fixed_len = if has_rest {
+            parts.len() - 1
+        } else {
+            parts.len()
+        };
         let fixed_lit = idx(fixed_len);
 
         let len_check = if has_rest {
@@ -6233,7 +6581,9 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
                 RoutePart::Literal(l) => {
                     let l = LitStr::new(l, Span::call_site());
                     let ii = idx(i);
-                    checks.push(quote! { if __segs[#ii] != #l { return ::core::option::Option::None; } });
+                    checks.push(
+                        quote! { if __segs[#ii] != #l { return ::core::option::Option::None; } },
+                    );
                 }
                 RoutePart::Single(id) => {
                     let ii = idx(i);

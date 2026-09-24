@@ -134,7 +134,10 @@ pub struct Style<P = All> {
 
 impl<P> Style<P> {
     pub const fn new(atoms: &'static [Atom]) -> Self {
-        Style { atoms, props: PhantomData }
+        Style {
+            atoms,
+            props: PhantomData,
+        }
     }
 
     /// A compile-time witness that this style's property set allows `Prop` — `css!`
@@ -230,7 +233,10 @@ pub struct Var<K> {
 
 impl<K> Var<K> {
     pub const fn new(name: &'static str) -> Self {
-        Var { name, kind: PhantomData }
+        Var {
+            name,
+            kind: PhantomData,
+        }
     }
 
     /// This var **as a value** — the `var(--…)` reference. A `vars!` var is the one
@@ -379,9 +385,8 @@ pub fn merge(styles: &[&'static [Atom]]) -> Merged {
     let mut chosen: Vec<&Atom> = Vec::new();
     for atoms in styles {
         for atom in *atoms {
-            let key = |have: &&Atom| {
-                have.property == atom.property && have.condition == atom.condition
-            };
+            let key =
+                |have: &&Atom| have.property == atom.property && have.condition == atom.condition;
             match chosen.iter_mut().find(|have| key(have)) {
                 Some(slot) => *slot = atom,
                 None => chosen.push(atom),
@@ -419,12 +424,18 @@ pub struct StyleTable {
 #[cfg(not(target_arch = "wasm32"))]
 impl StyleTable {
     pub(crate) fn insert(&mut self, package: &str, name: String, css: String) {
-        self.rules.entry(package.to_string()).or_default().insert(name, css);
+        self.rules
+            .entry(package.to_string())
+            .or_default()
+            .insert(name, css);
     }
 
     /// The rule text for a class name, if any package declares it.
     pub fn resolve(&self, name: &str) -> Option<&str> {
-        self.rules.values().find_map(|rules| rules.get(name)).map(String::as_str)
+        self.rules
+            .values()
+            .find_map(|rules| rules.get(name))
+            .map(String::as_str)
     }
 
     /// Every rule, `(name, css)`, package-major order — deterministic sheet output.
@@ -464,7 +475,10 @@ mod tests {
         // `var(…)` reference for *reading* it as a value (an inline style, a computed pick).
         assert_eq!(accent.value().to_string(), "var(--v1-palette-accent)");
         // References compare by declaration identity, value unseen.
-        assert_eq!(accent.value(), Var::<kind::Color>::new("--v1-palette-accent").value());
+        assert_eq!(
+            accent.value(),
+            Var::<kind::Color>::new("--v1-palette-accent").value()
+        );
     }
 
     const fn atom(
@@ -473,12 +487,27 @@ mod tests {
         condition: Condition,
         rule: &'static str,
     ) -> Atom {
-        Atom { class, property, condition, rule }
+        Atom {
+            class,
+            property,
+            condition,
+            rule,
+        }
     }
 
     const CARD: &[Atom] = &[
-        atom("x1-pad", "padding", Condition::None, ".x1-pad{padding:1.5rem}"),
-        atom("x1-bg", "background", Condition::None, ".x1-bg{background:#ffffff}"),
+        atom(
+            "x1-pad",
+            "padding",
+            Condition::None,
+            ".x1-pad{padding:1.5rem}",
+        ),
+        atom(
+            "x1-bg",
+            "background",
+            Condition::None,
+            ".x1-bg{background:#ffffff}",
+        ),
         atom(
             "x1-bg-d",
             "background",
@@ -487,8 +516,12 @@ mod tests {
         ),
     ];
 
-    const ACTIVE: &[Atom] =
-        &[atom("x2-bg", "background", Condition::None, ".x2-bg{background:#f4f6f8}")];
+    const ACTIVE: &[Atom] = &[atom(
+        "x2-bg",
+        "background",
+        Condition::None,
+        ".x2-bg{background:#f4f6f8}",
+    )];
 
     #[test]
     fn merge_is_last_wins_per_property_and_condition() {
@@ -510,7 +543,11 @@ mod tests {
             table.insert("card-crate", atom.class.to_string(), atom.rule.to_string());
         }
         for atom in ACTIVE {
-            table.insert("active-crate", atom.class.to_string(), atom.rule.to_string());
+            table.insert(
+                "active-crate",
+                atom.class.to_string(),
+                atom.rule.to_string(),
+            );
         }
 
         assert_eq!(table.resolve("x2-bg"), Some(".x2-bg{background:#f4f6f8}"));
@@ -531,9 +568,13 @@ mod tests {
         struct CardProps;
         impl Allows<props::Padding> for CardProps {}
 
-        const PROMO: Style<CardProps> =
-            Style::new(&[atom("x3-pad", "padding", Condition::None, ".x3-pad{padding:2rem}")])
-                .requires::<props::Padding>();
+        const PROMO: Style<CardProps> = Style::new(&[atom(
+            "x3-pad",
+            "padding",
+            Condition::None,
+            ".x3-pad{padding:2rem}",
+        )])
+        .requires::<props::Padding>();
         // `.requires::<props::Color>()` on PROMO would not compile — the marker has no
         // `Allows<Color>` impl. The unconstrained default accepts everything:
         const ANY: Style = Style::new(CARD).requires::<props::Color>();

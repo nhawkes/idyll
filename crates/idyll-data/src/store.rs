@@ -3,7 +3,6 @@
 //! touches owners or wire bytes — [`Store::provide`] and [`Store::of`] take the
 //! live's `Ctx` and thread authority internally.
 
-
 use idyll::{Ctx, Setup};
 use serde::de::DeserializeOwned;
 
@@ -59,18 +58,22 @@ impl<F: NodeFragment + 'static> Store<F> {
         let store = Self::build(ctx, seed)?;
         let cache = store.cache.clone();
         let current = std::rc::Rc::clone(&store.current);
-        let sink = ctx.absorber(move |turn: &idyll::Turn, bytes: &[u8]| -> Result<(), AbsorbError> {
-            let refresh: Preloaded<R> =
-                serde_json::from_slice(bytes).map_err(AbsorbError::Decode)?;
-            // Records first, then the pointer: a projection following `current`
-            // resolves against a cache that already holds the page.
-            cache.replay(turn, &refresh.seed).map_err(AbsorbError::Replay)?;
-            let page = refresh.roots.page();
-            if current.now(turn) != page {
-                current.update(turn, |p| *p = page);
-            }
-            Ok(())
-        });
+        let sink = ctx.absorber(
+            move |turn: &idyll::Turn, bytes: &[u8]| -> Result<(), AbsorbError> {
+                let refresh: Preloaded<R> =
+                    serde_json::from_slice(bytes).map_err(AbsorbError::Decode)?;
+                // Records first, then the pointer: a projection following `current`
+                // resolves against a cache that already holds the page.
+                cache
+                    .replay(turn, &refresh.seed)
+                    .map_err(AbsorbError::Replay)?;
+                let page = refresh.roots.page();
+                if current.now(turn) != page {
+                    current.update(turn, |p| *p = page);
+                }
+                Ok(())
+            },
+        );
         ctx.provide(sink);
         ctx.provide(store.clone());
         Ok(store)
@@ -91,7 +94,10 @@ impl<F: NodeFragment + 'static> Store<F> {
         match ctx.use_context::<Self>() {
             Some(store) => Ok((*store).clone()),
             None if ctx.is_root_mount() => Ok(Self::build(ctx, seed)?),
-            None => Err(NoStoreRoot { page: std::any::type_name::<F>() }.into()),
+            None => Err(NoStoreRoot {
+                page: std::any::type_name::<F>(),
+            }
+            .into()),
         }
     }
 }

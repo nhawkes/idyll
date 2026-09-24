@@ -119,7 +119,10 @@ impl Owner {
     /// The runtime this scope's cells mark into — alive for as long as components
     /// still create cells in it.
     pub(crate) fn runtime(&self) -> Rc<RuntimeCore> {
-        self.0.rt.upgrade().expect("an owner's runtime outlives the components rooted in it")
+        self.0
+            .rt
+            .upgrade()
+            .expect("an owner's runtime outlives the components rooted in it")
     }
 
     /// A child disposal scope, owned by this one. Nodes rooted in the child are
@@ -246,7 +249,10 @@ mod tests {
         drop(keep);
         child.dispose();
         drop(child);
-        assert!(probe.upgrade().is_none(), "the parent still retains the disposed child");
+        assert!(
+            probe.upgrade().is_none(),
+            "the parent still retains the disposed child"
+        );
         // And the parent's own disposal (which drains children) still works after.
         parent.dispose();
     }

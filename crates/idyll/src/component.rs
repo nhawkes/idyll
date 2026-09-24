@@ -24,7 +24,12 @@ fn child_scaffold(frame: &ContextMap, child_id: ChildId) -> ChildScaffold {
     let contexts = crate::ctx::ContextScope::child(frame);
     let route = FaultRoute::from_frame(&contexts);
     let (guards, sink) = contexts.runtime().child_render_sink(child_id);
-    ChildScaffold { contexts, route, guards, sink }
+    ChildScaffold {
+        contexts,
+        route,
+        guards,
+        sink,
+    }
 }
 
 // Suspense is not a status but a **fact about a future**: a component that has not yet posted
@@ -63,7 +68,12 @@ pub async fn mount_child<C: Component>(
     optional: C::Optional,
     child_id: ChildId,
 ) -> std::result::Result<MountGuard, crate::Fault> {
-    let ChildScaffold { contexts, route, guards, sink } = child_scaffold(frame, child_id);
+    let ChildScaffold {
+        contexts,
+        route,
+        guards,
+        sink,
+    } = child_scaffold(frame, child_id);
     // `resolving` mints the witness *with* the sink that marks it, so the one we hand to
     // `run_to_render` is by construction the one this child's render fires. The view itself flows
     // to the DOM through the base sink (stash-until-anchor); the witness carries no payload.
@@ -132,7 +142,12 @@ pub fn spawn_child<C: Component>(
     optional: C::Optional,
     child_id: ChildId,
 ) -> MountGuard {
-    let ChildScaffold { contexts, route, guards, sink } = child_scaffold(frame, child_id);
+    let ChildScaffold {
+        contexts,
+        route,
+        guards,
+        sink,
+    } = child_scaffold(frame, child_id);
     let rt = Rc::clone(contexts.runtime());
     let ctx = Ctx::<Setup, C::Msg>::spawned(contexts, sink);
     // Fire-and-forget: the whole `run` goes to the executor at once. A live child never returns;
@@ -249,7 +264,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     //! The two-phase mount path: `mount_child` resolves a child to render and hands it to the
@@ -290,7 +304,11 @@ mod tests {
         #[derive(Debug)]
         enum PMsg {}
 
-        async fn parent(ctx: Ctx<Setup, PMsg>, sender_slot: SenderSlot, guard_slot: GuardSlot) -> Result {
+        async fn parent(
+            ctx: Ctx<Setup, PMsg>,
+            sender_slot: SenderSlot,
+            guard_slot: GuardSlot,
+        ) -> Result {
             let cid = fresh_child_id();
             let mut ctx = ctx
                 .render(move |scope| {
@@ -325,17 +343,29 @@ mod tests {
         rt.process_pending_view(&mut driver);
         rt.run_to_quiescence();
         rt.flush(&mut driver);
-        assert_eq!(driver.set_texts(), vec!["0"], "the leaf resolved and spliced at the anchor");
+        assert_eq!(
+            driver.set_texts(),
+            vec!["0"],
+            "the leaf resolved and spliced at the anchor"
+        );
 
         sender_slot.borrow().as_ref().unwrap().send(LeafMsg::Bump);
         rt.run_to_quiescence();
         rt.flush(&mut driver);
-        assert_eq!(driver.set_texts(), vec!["0", "1"], "the leaf drives from the executor");
+        assert_eq!(
+            driver.set_texts(),
+            vec!["0", "1"],
+            "the leaf drives from the executor"
+        );
 
         let before = rt.live_task_count();
         guard_slot.borrow_mut().take(); // drop the guard → unmount
         rt.run_once();
-        assert_eq!(rt.live_task_count(), before - 1, "dropping the guard reaps the leaf task");
+        assert_eq!(
+            rt.live_task_count(),
+            before - 1,
+            "dropping the guard reaps the leaf task"
+        );
     }
 
     /// A view-embedded child mounted through the macro renders at its anchor — the ordinary
@@ -441,13 +471,21 @@ mod tests {
         let (s, sink_report) = (Rc::clone(&slot), Rc::clone(&reported));
         let mut driver = MockDriver::new();
         let mut rt = Runtime::new();
-        rt.spawn(spawn_live(move |ctx| render_once(ctx, s), rt.ctx(), move |error| {
-            *sink_report.borrow_mut() = Some(error.to_string());
-        }));
+        rt.spawn(spawn_live(
+            move |ctx| render_once(ctx, s),
+            rt.ctx(),
+            move |error| {
+                *sink_report.borrow_mut() = Some(error.to_string());
+            },
+        ));
         rt.run_to_quiescence();
         rt.process_pending_view(&mut driver);
         rt.run_to_quiescence();
-        assert_eq!(*reported.borrow(), None, "it rendered and returned its mount");
+        assert_eq!(
+            *reported.borrow(),
+            None,
+            "it rendered and returned its mount"
+        );
 
         let sink = slot.borrow().as_ref().unwrap().clone();
         (sink.0)(b"junk");

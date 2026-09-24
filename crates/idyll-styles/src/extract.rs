@@ -53,8 +53,10 @@ pub fn source_roots(dir: &Path) -> Result<Vec<SourceRoot>> {
     let packages = metadata["packages"]
         .as_array()
         .context("cargo metadata has no packages")?;
-    let members: std::collections::BTreeSet<&str> =
-        packages.iter().filter_map(|package| package["name"].as_str()).collect();
+    let members: std::collections::BTreeSet<&str> = packages
+        .iter()
+        .filter_map(|package| package["name"].as_str())
+        .collect();
 
     packages
         .iter()
@@ -90,9 +92,14 @@ pub fn source_roots(dir: &Path) -> Result<Vec<SourceRoot>> {
 /// The live universe: the app crate and its transitive workspace dependencies —
 /// every package whose code can link into the live wasm, and therefore every
 /// package whose rules a live could materialize client-side.
-pub fn universe(roots: &[SourceRoot], app_crate: &str) -> Result<std::collections::BTreeSet<String>> {
-    let by_name: std::collections::BTreeMap<&str, &SourceRoot> =
-        roots.iter().map(|root| (root.package.as_str(), root)).collect();
+pub fn universe(
+    roots: &[SourceRoot],
+    app_crate: &str,
+) -> Result<std::collections::BTreeSet<String>> {
+    let by_name: std::collections::BTreeMap<&str, &SourceRoot> = roots
+        .iter()
+        .map(|root| (root.package.as_str(), root))
+        .collect();
     if !by_name.contains_key(app_crate) {
         bail!("app crate `{app_crate}` is not a workspace member");
     }
@@ -205,22 +212,25 @@ fn file_claiming(
     }
     let Some(module) = module else { return Ok(()) };
 
-    let identity = parse::path_identity(&root.package, &root.manifest_dir, path)
-        .with_context(|| {
-            format!("{} is not under {}'s manifest dir", path.display(), root.package)
+    let identity =
+        parse::path_identity(&root.package, &root.manifest_dir, path).with_context(|| {
+            format!(
+                "{} is not under {}'s manifest dir",
+                path.display(),
+                root.package
+            )
         })?;
     let prefix = parse::class_prefix(&identity);
     prefixes.claim(&prefix, &identity)?;
     // Var identity is the crate; the group's `:root` rules ride the table like any
     // rule, and `css!` references derive the same names syntactically.
     let vars_prefix = parse::vars_prefix(&root.package);
-    let groups =
-        parse::var_groups(module, &vars_prefix).map_err(|error| located(path, &error))?;
+    let groups = parse::var_groups(module, &vars_prefix).map_err(|error| located(path, &error))?;
     for group in &groups {
         table.insert(&root.package, group.name.clone(), group.rule());
     }
-    for theme in parse::theme_list(module, &prefix, &vars_prefix)
-        .map_err(|error| located(path, &error))?
+    for theme in
+        parse::theme_list(module, &prefix, &vars_prefix).map_err(|error| located(path, &error))?
     {
         for atom in theme.atoms {
             table.insert(&root.package, atom.class.clone(), atom.rule());
@@ -249,7 +259,9 @@ fn find_styles_modules<'a>(
     top_level: bool,
     found: &mut impl FnMut(&'a syn::ItemMod, bool) -> Result<()>,
 ) -> Result<()> {
-    let syn::Item::Mod(module) = item else { return Ok(()) };
+    let syn::Item::Mod(module) = item else {
+        return Ok(());
+    };
     if module.attrs.iter().any(is_styles_attr) {
         found(module, top_level)?;
     }
@@ -271,7 +283,12 @@ fn is_styles_attr(attr: &syn::Attribute) -> bool {
 
 fn located(path: &Path, error: &syn::Error) -> anyhow::Error {
     let start = error.span().start();
-    anyhow::anyhow!("{}:{}:{}: {error}", path.display(), start.line, start.column + 1)
+    anyhow::anyhow!(
+        "{}:{}:{}: {error}",
+        path.display(),
+        start.line,
+        start.column + 1
+    )
 }
 
 #[cfg(test)]

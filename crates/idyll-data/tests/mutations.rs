@@ -26,7 +26,11 @@ struct Store(Arc<Mutex<Vec<String>>>);
 async fn shout(store: &Store, text: String) -> Result<Echo, std::convert::Infallible> {
     let loud = text.to_uppercase();
     store.0.lock().unwrap().push(loud.clone());
-    Ok(Echo { id: 1, text: loud, secret: "server-only".into() })
+    Ok(Echo {
+        id: 1,
+        text: loud,
+        secret: "server-only".into(),
+    })
 }
 
 // The mutation's reachability closure registers Echo.
@@ -62,7 +66,10 @@ fn a_mutation_artifact_validates_executes_typed_and_masks_the_response() {
     validate_mutation(&schema, &artifact).expect("artifact typechecks");
 
     let resolvers: Resolvers<Store> = Resolvers::new().mutation(shout().resolver);
-    assert!(resolvers.has_mutation("shout"), "the boot check's handler lookup");
+    assert!(
+        resolvers.has_mutation("shout"),
+        "the boot check's handler lookup"
+    );
 
     let store = Store::default();
     let masked = block_on(execute_mutation(
@@ -101,7 +108,14 @@ pub struct Wallet {
 
 #[mutation_handler("rename-user")]
 async fn rename_user(_store: &Store, name: String) -> Result<User, std::convert::Infallible> {
-    Ok(User { id: 7, name, wallet: Wallet { amount: 5, currency: "GBP".into() } })
+    Ok(User {
+        id: 7,
+        name,
+        wallet: Wallet {
+            amount: 5,
+            currency: "GBP".into(),
+        },
+    })
 }
 
 #[test]

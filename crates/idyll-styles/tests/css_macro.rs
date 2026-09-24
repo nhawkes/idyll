@@ -110,7 +110,10 @@ fn filter_lowers_to_css() {
         .find(|r| r.name.ends_with("-filter"))
         .and_then(|r| r.css.as_deref())
         .expect("filter rule present");
-    assert!(css.ends_with("{filter:brightness(1.85) saturate(1.05)}"), "got {css}");
+    assert!(
+        css.ends_with("{filter:brightness(1.85) saturate(1.05)}"),
+        "got {css}"
+    );
 }
 
 #[test]
@@ -119,7 +122,10 @@ fn class_identity_is_site_const_property_condition() {
     // One shared file prefix; the const name and readable property + condition
     // suffixes carry the rest of the identity.
     let prefix = classes[0].split('-').next().unwrap().to_string();
-    assert!(prefix.starts_with('i') && prefix.len() == 9, "prefix shape: {prefix}");
+    assert!(
+        prefix.starts_with('i') && prefix.len() == 9,
+        "prefix shape: {prefix}"
+    );
     assert_eq!(
         classes,
         [
@@ -167,7 +173,9 @@ fn values_render_into_rule_text_only() {
     assert!(css_of("-background-h").contains(":hover{background:#f4f6f8}"));
     assert!(css_of("-padding-top-m").starts_with("@media (max-width: 640px){"));
     // No class name contains a value fragment.
-    assert!(rules.iter().all(|r| !r.name.contains("860") && !r.name.contains("ffffff")));
+    assert!(rules
+        .iter()
+        .all(|r| !r.name.contains("860") && !r.name.contains("ffffff")));
 }
 
 #[test]
@@ -182,11 +190,19 @@ fn relational_conditions_select_the_subtree_not_the_element() {
             .to_string()
     };
     let class = |suffix: &str| {
-        rules.iter().find(|r| r.name.ends_with(suffix)).expect("rule present").name.to_string()
+        rules
+            .iter()
+            .find(|r| r.name.ends_with(suffix))
+            .expect("rule present")
+            .name
+            .to_string()
     };
 
     let input = class("-opacity-c-input");
-    assert_eq!(css_of("-opacity-c-input"), format!(".{input} > input{{opacity:0}}"));
+    assert_eq!(
+        css_of("-opacity-c-input"),
+        format!(".{input} > input{{opacity:0}}")
+    );
 
     let first = class("-border-radius-c-label-first");
     assert_eq!(
@@ -219,7 +235,10 @@ fn relational_conditions_select_the_subtree_not_the_element() {
     let expected: Vec<String> = (1..=3)
         .map(|i| format!(".{pairs} > input:nth-of-type({i}):checked ~ pre:nth-of-type({i})"))
         .collect();
-    assert_eq!(css_of("-display-p-input-pre-3"), format!("{}{{display:block}}", expected.join(",")));
+    assert_eq!(
+        css_of("-display-p-input-pre-3"),
+        format!("{}{{display:block}}", expected.join(","))
+    );
 
     // The two halves of a reveal: the styled element is the trigger in both, and
     // what they select is its child — the pointer's path and the keyboard's.
@@ -286,9 +305,11 @@ mod reactive {
     async fn chip(ctx: Ctx<Setup, Msg>) -> idyll::Result {
         let on = ctx.mutable_signal(false);
         let sel = on.read();
-        let mut ctx = ctx.render(live_view! {
-            button.tag css=[CARD, $sel => ACTIVE] onclick=>(|_| Msg::Toggle) { "chip" }
-        }).await?;
+        let mut ctx = ctx
+            .render(live_view! {
+                button.tag css=[CARD, $sel => ACTIVE] onclick=>(|_| Msg::Toggle) { "chip" }
+            })
+            .await?;
         loop {
             let (Msg::Toggle, turn) = ctx.recv().await?;
             on.update(&turn, |v| *v = !*v);
@@ -300,7 +321,11 @@ mod reactive {
         let mut rt = idyll::Runtime::new();
         let mut driver = idyll::CommandBufferDriver::new();
         let ctx = rt.ctx::<Msg>();
-        rt.spawn(idyll::component::spawn_live(chip, ctx, idyll::component::report_to_log));
+        rt.spawn(idyll::component::spawn_live(
+            chip,
+            ctx,
+            idyll::component::report_to_log,
+        ));
         rt.run_once();
         rt.process_pending_view(&mut driver);
         rt.flush(&mut driver);
@@ -334,7 +359,12 @@ mod reactive {
                 DomCommand::ReplaceTemplate { template, .. } => Some(template.clone()),
                 _ => None,
             })
-            .flat_map(|t| t.styles.iter().map(|r| r.name.to_string()).collect::<Vec<_>>())
+            .flat_map(|t| {
+                t.styles
+                    .iter()
+                    .map(|r| r.name.to_string())
+                    .collect::<Vec<_>>()
+            })
             .collect();
         for atom in CARD.atoms().iter().chain(ACTIVE.atoms()) {
             assert!(
@@ -347,7 +377,10 @@ mod reactive {
         driver.dispatch_event(HandlerId(0), idyll::Event::default());
         rt.run_to_quiescence();
         rt.flush(&mut driver);
-        assert_eq!(class_writes(&driver.take_commands()), [format!("tag {selected}")]);
+        assert_eq!(
+            class_writes(&driver.take_commands()),
+            [format!("tag {selected}")]
+        );
 
         driver.dispatch_event(HandlerId(0), idyll::Event::default());
         rt.run_to_quiescence();
@@ -383,9 +416,15 @@ fn view_css_attaches_classes_and_rules() {
 
     // Every referenced rule rides the template, resolved (this is native code).
     let styles = &content.template().styles;
-    for atom in merged.rules.iter().chain(merge(&[CHIP.atoms()]).rules.iter()) {
+    for atom in merged
+        .rules
+        .iter()
+        .chain(merge(&[CHIP.atoms()]).rules.iter())
+    {
         assert!(
-            styles.iter().any(|r| r.name == atom.name && r.css.is_some()),
+            styles
+                .iter()
+                .any(|r| r.name == atom.name && r.css.is_some()),
             "rule {} rides the content",
             atom.name
         );

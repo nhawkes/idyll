@@ -28,7 +28,10 @@ pub struct TplAttr {
 
 impl TplAttr {
     pub fn new(name: impl Into<Cow<'static, str>>, value: impl Into<Cow<'static, str>>) -> TplAttr {
-        TplAttr { name: name.into(), value: value.into() }
+        TplAttr {
+            name: name.into(),
+            value: value.into(),
+        }
     }
 }
 
@@ -48,7 +51,11 @@ impl OptionalAttr for bool {
         self.then_some(Cow::Borrowed(""))
     }
     fn op(self, node_id: crate::driver::NodeId, name: &'static str) -> crate::driver::DomOp {
-        crate::driver::DomOp::SetBoolAttr { node_id, name, value: self }
+        crate::driver::DomOp::SetBoolAttr {
+            node_id,
+            name,
+            value: self,
+        }
     }
 }
 
@@ -58,7 +65,11 @@ impl<T: std::fmt::Display> OptionalAttr for Option<T> {
     }
     fn op(self, node_id: crate::driver::NodeId, name: &'static str) -> crate::driver::DomOp {
         match self {
-            Some(value) => crate::driver::DomOp::SetAttr { node_id, name, value: value.to_string() },
+            Some(value) => crate::driver::DomOp::SetAttr {
+                node_id,
+                name,
+                value: value.to_string(),
+            },
             None => crate::driver::DomOp::RemoveAttr { node_id, name },
         }
     }
@@ -249,20 +260,30 @@ impl View {
                 TplNode::TextSlot(slot) | TplNode::AnchorSlot(slot) => {
                     panic!("content IR cannot carry slots (found slot {slot:?}): a slot is a live binding, and content is a value")
                 }
-                TplNode::Element { slot: Some(slot), .. } => {
+                TplNode::Element {
+                    slot: Some(slot), ..
+                } => {
                     panic!("content IR cannot carry slots (found element slot {slot:?}): a slot is a live binding, and content is a value")
                 }
                 _ => {}
             }
         }
-        View(Template { nodes: Cow::Owned(nodes), styles: Cow::Owned(styles), svg: false })
+        View(Template {
+            nodes: Cow::Owned(nodes),
+            styles: Cow::Owned(styles),
+            svg: false,
+        })
     }
 
     /// A static text run — one DOM text node. Builders that need merged runs
     /// (IR node boundaries = DOM boundaries after a claim walk) merge *before*
     /// construction; two appended texts stay two nodes.
     pub fn text(text: impl Into<String>) -> View {
-        View(Template { nodes: Cow::Owned(vec![TplNode::Text(Cow::Owned(text.into()))]), styles: Cow::Borrowed(&[]), svg: false })
+        View(Template {
+            nodes: Cow::Owned(vec![TplNode::Text(Cow::Owned(text.into()))]),
+            styles: Cow::Borrowed(&[]),
+            svg: false,
+        })
     }
 
     /// One element wrapping `children`, with static attributes — `view!`'s element
@@ -281,7 +302,11 @@ impl View {
             children: root_count(&child_nodes),
         });
         nodes.extend(child_nodes);
-        View(Template { nodes: Cow::Owned(nodes), styles: children.0.styles, svg: false })
+        View(Template {
+            nodes: Cow::Owned(nodes),
+            styles: children.0.styles,
+            svg: false,
+        })
     }
 
     /// A live mount marker — the named hole where live code mounts, identity
@@ -305,7 +330,11 @@ impl View {
             fallback: root_count(&fallback_nodes),
         });
         nodes.extend(fallback_nodes);
-        View(Template { nodes: Cow::Owned(nodes), styles: fallback.0.styles, svg: false })
+        View(Template {
+            nodes: Cow::Owned(nodes),
+            styles: fallback.0.styles,
+            svg: false,
+        })
     }
 
     /// Concatenate content — `self`'s roots followed by `other`'s.
@@ -369,7 +398,10 @@ pub fn root_count(nodes: &[TplNode]) -> u32 {
     let mut cursor = 0usize;
     while cursor < nodes.len() {
         match &nodes[cursor] {
-            TplNode::Element { children, .. } | TplNode::Live { fallback: children, .. } => {
+            TplNode::Element { children, .. }
+            | TplNode::Live {
+                fallback: children, ..
+            } => {
                 let children = *children;
                 cursor += 1;
                 cursor += subtree_len(&nodes[cursor..], children);
@@ -403,7 +435,10 @@ pub(crate) fn subtree_len(nodes: &[TplNode], children: u32) -> usize {
     for _ in 0..children {
         match nodes.get(cursor) {
             Some(
-                TplNode::Element { children, .. } | TplNode::Live { fallback: children, .. },
+                TplNode::Element { children, .. }
+                | TplNode::Live {
+                    fallback: children, ..
+                },
             ) => {
                 let inner = *children;
                 cursor += 1;
@@ -420,7 +455,19 @@ pub(crate) fn subtree_len(nodes: &[TplNode], children: u32) -> usize {
 pub(crate) fn is_void(tag: &str) -> bool {
     matches!(
         tag,
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta"
-            | "param" | "source" | "track" | "wbr"
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
     )
 }

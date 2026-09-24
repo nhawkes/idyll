@@ -26,7 +26,10 @@ fn rule(name: &str, css: &str) -> StyleRule {
 }
 
 fn unresolved(name: &str) -> StyleRule {
-    StyleRule { name: Cow::Owned(name.to_string()), css: None }
+    StyleRule {
+        name: Cow::Owned(name.to_string()),
+        css: None,
+    }
 }
 
 fn div(class: &'static str, children: u32) -> TplNode {
@@ -124,7 +127,10 @@ fn union_upgrades_unresolved_rules_and_never_duplicates() {
 #[test]
 fn the_styles_field_is_absent_from_the_wire_when_empty() {
     let bare = serde_json::to_value(Template::from(vec![div("x", 0)])).unwrap();
-    assert!(bare.get("styles").is_none(), "no empty styles on the wire: {bare}");
+    assert!(
+        bare.get("styles").is_none(),
+        "no empty styles on the wire: {bare}"
+    );
 
     // And the pre-styles wire shape still parses (transitions' hand-built payloads).
     let legacy: Template = serde_json::from_value(serde_json::json!({ "nodes": [] })).unwrap();

@@ -11,8 +11,8 @@ use idyll::component::{report_to_log, spawn_live};
 use idyll::driver::DomOp;
 use idyll::template::TplNode;
 use idyll::{
-    view, view_html, view_segments, live_view, BodySegment, Ctx,
-    CommandBufferDriver, MockDriver, View, Runtime, Setup,
+    live_view, view, view_html, view_segments, BodySegment, CommandBufferDriver, Ctx, MockDriver,
+    Runtime, Setup, View,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -21,7 +21,9 @@ use idyll::{
 fn ir_html(template: &idyll::template::Template) -> String {
     fn write(nodes: &[TplNode], cursor: &mut usize, count: usize, out: &mut String) {
         for _ in 0..count {
-            let Some(node) = nodes.get(*cursor) else { return };
+            let Some(node) = nodes.get(*cursor) else {
+                return;
+            };
             *cursor += 1;
             match node {
                 TplNode::Text(t) => out.push_str(t),
@@ -247,7 +249,10 @@ fn a_live_component_replaces_placed_content_when_its_signal_changes() {
     sender.send(Msg::Swap);
     rt.run_once();
     rt.flush(&mut driver);
-    assert_eq!(all_fragment_html(&driver), vec!["<p>first</p>", "<p>second</p>"]);
+    assert_eq!(
+        all_fragment_html(&driver),
+        vec!["<p>first</p>", "<p>second</p>"]
+    );
 }
 
 // ── Live ride inside ───────────────────────────────────────────────
@@ -264,8 +269,7 @@ fn islands_cross_inside_rendered_content_and_surface_at_the_splice() {
     // The live is typed IR — recovered without string comparison — and it survives
     // the wire.
     assert_eq!(body.live(), vec![("w".to_string(), None)]);
-    let back: View =
-        serde_json::from_str(&serde_json::to_string(&body).unwrap()).unwrap();
+    let back: View = serde_json::from_str(&serde_json::to_string(&body).unwrap()).unwrap();
     assert_eq!(back.live(), vec![("w".to_string(), None)]);
 
     // Wrapping the content keeps the marker; the fold serializes the wrapper, with
@@ -312,7 +316,12 @@ fn segments_cut_at_island_paint_slots_and_recompose_to_the_same_html() {
         .iter()
         .map(|s| match s {
             BodySegment::Html(html) => html.as_str().to_owned(),
-            BodySegment::Live { name, instance, key, .. } => format!(
+            BodySegment::Live {
+                name,
+                instance,
+                key,
+                ..
+            } => format!(
                 "{}{}{}",
                 idyll::live_wrapper_open(name, key.as_deref(), false),
                 paint(*instance).as_str(),

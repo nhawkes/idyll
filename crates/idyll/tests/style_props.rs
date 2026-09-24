@@ -35,8 +35,14 @@ fn ssr_merges_declarations_into_the_style_attribute() {
         html.contains("width:10px") && html.contains("height:10px"),
         "static style survives: {html}"
     );
-    assert!(html.contains("transform:translate(3px,4px)"), "prop merged: {html}");
-    assert!(html.contains("--qv-p:37.5%"), "custom property merged: {html}");
+    assert!(
+        html.contains("transform:translate(3px,4px)"),
+        "prop merged: {html}"
+    );
+    assert!(
+        html.contains("--qv-p:37.5%"),
+        "custom property merged: {html}"
+    );
 }
 
 #[derive(Debug)]
@@ -47,11 +53,13 @@ enum Msg {
 async fn dot(ctx: Ctx<Setup, Msg>) -> idyll::Result {
     let x = ctx.mutable_signal(0u32);
     let x_view = x.read();
-    let mut ctx = ctx.render(live_view! {
-        div onclick=>(|_| Msg::Nudge)
-            style=("width:10px")
-            style:transform=(format!("translate({}px,0px)", $x_view)) {}
-    }).await?;
+    let mut ctx = ctx
+        .render(live_view! {
+            div onclick=>(|_| Msg::Nudge)
+                style=("width:10px")
+                style:transform=(format!("translate({}px,0px)", $x_view)) {}
+        })
+        .await?;
     loop {
         let (msg, turn) = ctx.recv().await?;
         match msg {
@@ -65,7 +73,11 @@ fn live_updates_write_one_declaration_not_the_attribute() {
     let mut rt = idyll::Runtime::new();
     let mut driver = idyll::CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(idyll::component::spawn_live(|ctx| dot(ctx), ctx, idyll::component::report_to_log));
+    rt.spawn(idyll::component::spawn_live(
+        |ctx| dot(ctx),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -92,7 +104,9 @@ fn live_updates_write_one_declaration_not_the_attribute() {
         "the update is a single declaration: {update:?}"
     );
     assert!(
-        !update.iter().any(|c| matches!(c, DomCommand::SetAttr { name, .. } if name == "style")),
+        !update
+            .iter()
+            .any(|c| matches!(c, DomCommand::SetAttr { name, .. } if name == "style")),
         "the style attribute itself must not be rewritten: {update:?}"
     );
 }

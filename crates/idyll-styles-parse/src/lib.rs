@@ -102,7 +102,10 @@ pub enum Prop {
     Table(&'static Property),
     /// A `vars!` handle's custom property: the name it lowers to, and the readable
     /// `group-field` that names the atom's class.
-    Var { css: String, ident: String },
+    Var {
+        css: String,
+        ident: String,
+    },
 }
 
 impl Prop {
@@ -159,13 +162,14 @@ pub struct Property {
     css_twin: Option<&'static str>,
 }
 
-const fn prop(
-    rust: &'static str,
-    css: &'static str,
-    marker: &'static str,
-    kind: Kind,
-) -> Property {
-    Property { rust, css, marker, kind, css_twin: None }
+const fn prop(rust: &'static str, css: &'static str, marker: &'static str, kind: Kind) -> Property {
+    Property {
+        rust,
+        css,
+        marker,
+        kind,
+        css_twin: None,
+    }
 }
 
 const fn prop_vendor(
@@ -175,43 +179,181 @@ const fn prop_vendor(
     css_twin: &'static str,
     kind: Kind,
 ) -> Property {
-    Property { rust, css, marker, kind, css_twin: Some(css_twin) }
+    Property {
+        rust,
+        css,
+        marker,
+        kind,
+        css_twin: Some(css_twin),
+    }
 }
 
 pub const PROPERTIES: &[Property] = &[
-    prop("display", "display", "Display", Kind::Keyword(&["flex", "grid", "block", "inline", "inline-block", "inline-flex", "inline-grid", "none", "contents"])),
-    prop("flex_direction", "flex-direction", "FlexDirection", Kind::Keyword(&["row", "column", "row-reverse", "column-reverse"])),
-    prop("align_items", "align-items", "AlignItems", Kind::Keyword(&["center", "flex-start", "flex-end", "stretch", "baseline"])),
-    prop("align_content", "align-content", "AlignContent", Kind::Keyword(&["center", "flex-start", "flex-end", "stretch", "space-between", "space-around", "space-evenly"])),
-    prop("justify_items", "justify-items", "JustifyItems", Kind::Keyword(&["center", "start", "end", "stretch"])),
-    prop("justify_self", "justify-self", "JustifySelf", Kind::Keyword(&["auto", "center", "start", "end", "stretch"])),
-    prop("align_self", "align-self", "AlignSelf", Kind::Keyword(&["auto", "center", "flex-start", "flex-end", "stretch", "baseline"])),
-    prop("justify_content", "justify-content", "JustifyContent", Kind::Keyword(&["center", "flex-start", "flex-end", "space-between", "space-around", "space-evenly"])),
-    prop("flex_wrap", "flex-wrap", "FlexWrap", Kind::Keyword(&["wrap", "nowrap", "wrap-reverse"])),
+    prop(
+        "display",
+        "display",
+        "Display",
+        Kind::Keyword(&[
+            "flex",
+            "grid",
+            "block",
+            "inline",
+            "inline-block",
+            "inline-flex",
+            "inline-grid",
+            "none",
+            "contents",
+        ]),
+    ),
+    prop(
+        "flex_direction",
+        "flex-direction",
+        "FlexDirection",
+        Kind::Keyword(&["row", "column", "row-reverse", "column-reverse"]),
+    ),
+    prop(
+        "align_items",
+        "align-items",
+        "AlignItems",
+        Kind::Keyword(&["center", "flex-start", "flex-end", "stretch", "baseline"]),
+    ),
+    prop(
+        "align_content",
+        "align-content",
+        "AlignContent",
+        Kind::Keyword(&[
+            "center",
+            "flex-start",
+            "flex-end",
+            "stretch",
+            "space-between",
+            "space-around",
+            "space-evenly",
+        ]),
+    ),
+    prop(
+        "justify_items",
+        "justify-items",
+        "JustifyItems",
+        Kind::Keyword(&["center", "start", "end", "stretch"]),
+    ),
+    prop(
+        "justify_self",
+        "justify-self",
+        "JustifySelf",
+        Kind::Keyword(&["auto", "center", "start", "end", "stretch"]),
+    ),
+    prop(
+        "align_self",
+        "align-self",
+        "AlignSelf",
+        Kind::Keyword(&[
+            "auto",
+            "center",
+            "flex-start",
+            "flex-end",
+            "stretch",
+            "baseline",
+        ]),
+    ),
+    prop(
+        "justify_content",
+        "justify-content",
+        "JustifyContent",
+        Kind::Keyword(&[
+            "center",
+            "flex-start",
+            "flex-end",
+            "space-between",
+            "space-around",
+            "space-evenly",
+        ]),
+    ),
+    prop(
+        "flex_wrap",
+        "flex-wrap",
+        "FlexWrap",
+        Kind::Keyword(&["wrap", "nowrap", "wrap-reverse"]),
+    ),
     prop("flex_grow", "flex-grow", "FlexGrow", Kind::Number),
     prop("flex_shrink", "flex-shrink", "FlexShrink", Kind::Number),
     prop("flex_basis", "flex-basis", "FlexBasis", Kind::Sizing),
-    prop("color_scheme", "color-scheme", "ColorScheme", Kind::ColorScheme),
+    prop(
+        "color_scheme",
+        "color-scheme",
+        "ColorScheme",
+        Kind::ColorScheme,
+    ),
     prop("gap", "gap", "Gap", Kind::Gap),
     prop("column_gap", "column-gap", "ColumnGap", Kind::Length),
-    prop("grid_template_columns", "grid-template-columns", "GridTemplateColumns", Kind::GridTemplate),
-    prop("grid_template_rows", "grid-template-rows", "GridTemplateRows", Kind::GridTemplate),
-    prop("grid_auto_flow", "grid-auto-flow", "GridAutoFlow", Kind::GridAutoFlow),
-    prop("grid_auto_rows", "grid-auto-rows", "GridAutoRows", Kind::GridTemplate),
-    prop("grid_auto_columns", "grid-auto-columns", "GridAutoColumns", Kind::GridTemplate),
+    prop(
+        "grid_template_columns",
+        "grid-template-columns",
+        "GridTemplateColumns",
+        Kind::GridTemplate,
+    ),
+    prop(
+        "grid_template_rows",
+        "grid-template-rows",
+        "GridTemplateRows",
+        Kind::GridTemplate,
+    ),
+    prop(
+        "grid_auto_flow",
+        "grid-auto-flow",
+        "GridAutoFlow",
+        Kind::GridAutoFlow,
+    ),
+    prop(
+        "grid_auto_rows",
+        "grid-auto-rows",
+        "GridAutoRows",
+        Kind::GridTemplate,
+    ),
+    prop(
+        "grid_auto_columns",
+        "grid-auto-columns",
+        "GridAutoColumns",
+        Kind::GridTemplate,
+    ),
     prop("grid_area", "grid-area", "GridArea", Kind::GridLine),
     prop("grid_column", "grid-column", "GridColumn", Kind::GridLine),
     prop("grid_row", "grid-row", "GridRow", Kind::GridLine),
     prop("padding", "padding", "Padding", Kind::Lengths),
     prop("padding_top", "padding-top", "PaddingTop", Kind::Length),
-    prop("padding_right", "padding-right", "PaddingRight", Kind::Length),
-    prop("padding_bottom", "padding-bottom", "PaddingBottom", Kind::Length),
+    prop(
+        "padding_right",
+        "padding-right",
+        "PaddingRight",
+        Kind::Length,
+    ),
+    prop(
+        "padding_bottom",
+        "padding-bottom",
+        "PaddingBottom",
+        Kind::Length,
+    ),
     prop("padding_left", "padding-left", "PaddingLeft", Kind::Length),
     prop("margin", "margin", "Margin", Kind::LengthsOrAuto),
     prop("margin_top", "margin-top", "MarginTop", Kind::LengthOrAuto),
-    prop("margin_right", "margin-right", "MarginRight", Kind::LengthOrAuto),
-    prop("margin_bottom", "margin-bottom", "MarginBottom", Kind::LengthOrAuto),
-    prop("margin_left", "margin-left", "MarginLeft", Kind::LengthOrAuto),
+    prop(
+        "margin_right",
+        "margin-right",
+        "MarginRight",
+        Kind::LengthOrAuto,
+    ),
+    prop(
+        "margin_bottom",
+        "margin-bottom",
+        "MarginBottom",
+        Kind::LengthOrAuto,
+    ),
+    prop(
+        "margin_left",
+        "margin-left",
+        "MarginLeft",
+        Kind::LengthOrAuto,
+    ),
     prop("width", "width", "Width", Kind::Sizing),
     prop("height", "height", "Height", Kind::Sizing),
     prop("max_width", "max-width", "MaxWidth", Kind::Sizing),
@@ -228,75 +370,326 @@ pub const PROPERTIES: &[Property] = &[
     prop("accent_color", "accent-color", "AccentColor", Kind::Color),
     prop("outline", "outline", "Outline", Kind::Border),
     prop("border_width", "border-width", "BorderWidth", Kind::Lengths),
-    prop("border_style", "border-style", "BorderStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("border_top_width", "border-top-width", "BorderTopWidth", Kind::Length),
-    prop("border_top_style", "border-top-style", "BorderTopStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("border_right_width", "border-right-width", "BorderRightWidth", Kind::Length),
-    prop("border_right_style", "border-right-style", "BorderRightStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("border_right_color", "border-right-color", "BorderRightColor", Kind::Color),
-    prop("border_bottom_width", "border-bottom-width", "BorderBottomWidth", Kind::Length),
-    prop("border_bottom_style", "border-bottom-style", "BorderBottomStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("border_bottom_color", "border-bottom-color", "BorderBottomColor", Kind::Color),
-    prop("border_left_width", "border-left-width", "BorderLeftWidth", Kind::Length),
-    prop("border_left_style", "border-left-style", "BorderLeftStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("border_left_color", "border-left-color", "BorderLeftColor", Kind::Color),
-    prop("outline_width", "outline-width", "OutlineWidth", Kind::Length),
-    prop("outline_style", "outline-style", "OutlineStyle", Kind::Keyword(&["none", "solid", "dashed", "dotted"])),
-    prop("outline_color", "outline-color", "OutlineColor", Kind::Color),
-    prop("outline_offset", "outline-offset", "OutlineOffset", Kind::Length),
+    prop(
+        "border_style",
+        "border-style",
+        "BorderStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "border_top_width",
+        "border-top-width",
+        "BorderTopWidth",
+        Kind::Length,
+    ),
+    prop(
+        "border_top_style",
+        "border-top-style",
+        "BorderTopStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "border_right_width",
+        "border-right-width",
+        "BorderRightWidth",
+        Kind::Length,
+    ),
+    prop(
+        "border_right_style",
+        "border-right-style",
+        "BorderRightStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "border_right_color",
+        "border-right-color",
+        "BorderRightColor",
+        Kind::Color,
+    ),
+    prop(
+        "border_bottom_width",
+        "border-bottom-width",
+        "BorderBottomWidth",
+        Kind::Length,
+    ),
+    prop(
+        "border_bottom_style",
+        "border-bottom-style",
+        "BorderBottomStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "border_bottom_color",
+        "border-bottom-color",
+        "BorderBottomColor",
+        Kind::Color,
+    ),
+    prop(
+        "border_left_width",
+        "border-left-width",
+        "BorderLeftWidth",
+        Kind::Length,
+    ),
+    prop(
+        "border_left_style",
+        "border-left-style",
+        "BorderLeftStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "border_left_color",
+        "border-left-color",
+        "BorderLeftColor",
+        Kind::Color,
+    ),
+    prop(
+        "outline_width",
+        "outline-width",
+        "OutlineWidth",
+        Kind::Length,
+    ),
+    prop(
+        "outline_style",
+        "outline-style",
+        "OutlineStyle",
+        Kind::Keyword(&["none", "solid", "dashed", "dotted"]),
+    ),
+    prop(
+        "outline_color",
+        "outline-color",
+        "OutlineColor",
+        Kind::Color,
+    ),
+    prop(
+        "outline_offset",
+        "outline-offset",
+        "OutlineOffset",
+        Kind::Length,
+    ),
     prop("border", "border", "Border", Kind::Border),
     prop("border_top", "border-top", "BorderTop", Kind::Border),
     prop("border_right", "border-right", "BorderRight", Kind::Border),
     prop("border_left", "border-left", "BorderLeft", Kind::Border),
-    prop("border_bottom", "border-bottom", "BorderBottom", Kind::Border),
+    prop(
+        "border_bottom",
+        "border-bottom",
+        "BorderBottom",
+        Kind::Border,
+    ),
     prop("border_color", "border-color", "BorderColor", Kind::Color),
-    prop("border_top_color", "border-top-color", "BorderTopColor", Kind::Color),
-    prop("border_radius", "border-radius", "BorderRadius", Kind::Lengths),
+    prop(
+        "border_top_color",
+        "border-top-color",
+        "BorderTopColor",
+        Kind::Color,
+    ),
+    prop(
+        "border_radius",
+        "border-radius",
+        "BorderRadius",
+        Kind::Lengths,
+    ),
     prop("box_shadow", "box-shadow", "BoxShadow", Kind::Shadow),
     prop("transition", "transition", "Transition", Kind::Transition),
-    prop("visibility", "visibility", "Visibility", Kind::Keyword(&["visible", "hidden"])),
+    prop(
+        "visibility",
+        "visibility",
+        "Visibility",
+        Kind::Keyword(&["visible", "hidden"]),
+    ),
     prop("z_index", "z-index", "ZIndex", Kind::Number),
-    prop("position", "position", "Position", Kind::Keyword(&["relative", "absolute", "fixed", "sticky", "static"])),
+    prop(
+        "position",
+        "position",
+        "Position",
+        Kind::Keyword(&["relative", "absolute", "fixed", "sticky", "static"]),
+    ),
     prop("top", "top", "Top", Kind::LengthOrAuto),
     prop("right", "right", "Right", Kind::LengthOrAuto),
     prop("bottom", "bottom", "Bottom", Kind::LengthOrAuto),
     prop("left", "left", "Left", Kind::LengthOrAuto),
-    prop("list_style", "list-style", "ListStyle", Kind::Keyword(&["none", "disc", "decimal"])),
-    prop("overflow", "overflow", "Overflow", Kind::Keyword(&["hidden", "auto", "scroll", "visible"])),
-    prop("overflow_x", "overflow-x", "OverflowX", Kind::Keyword(&["hidden", "auto", "scroll", "visible"])),
-    prop("overflow_y", "overflow-y", "OverflowY", Kind::Keyword(&["hidden", "auto", "scroll", "visible"])),
-    prop("overflow_anchor", "overflow-anchor", "OverflowAnchor", Kind::Keyword(&["none", "auto"])),
-    prop("text_decoration", "text-decoration", "TextDecoration", Kind::Keyword(&["none", "underline", "line-through"])),
-    prop("cursor", "cursor", "Cursor", Kind::Keyword(&["pointer", "default", "text", "grab", "grabbing", "move", "not-allowed", "help"])),
-    prop("white_space", "white-space", "WhiteSpace", Kind::Keyword(&["nowrap", "normal", "pre", "pre-wrap"])),
-    prop_vendor("appearance", "appearance", "Appearance", "-webkit-appearance", Kind::Keyword(&["none", "auto"])),
-    prop("user_select", "user-select", "UserSelect", Kind::Keyword(&["none", "auto", "text"])),
-    prop("pointer_events", "pointer-events", "PointerEvents", Kind::Keyword(&["none", "auto"])),
-    prop("box_sizing", "box-sizing", "BoxSizing", Kind::Keyword(&["border-box", "content-box"])),
+    prop(
+        "list_style",
+        "list-style",
+        "ListStyle",
+        Kind::Keyword(&["none", "disc", "decimal"]),
+    ),
+    prop(
+        "overflow",
+        "overflow",
+        "Overflow",
+        Kind::Keyword(&["hidden", "auto", "scroll", "visible"]),
+    ),
+    prop(
+        "overflow_x",
+        "overflow-x",
+        "OverflowX",
+        Kind::Keyword(&["hidden", "auto", "scroll", "visible"]),
+    ),
+    prop(
+        "overflow_y",
+        "overflow-y",
+        "OverflowY",
+        Kind::Keyword(&["hidden", "auto", "scroll", "visible"]),
+    ),
+    prop(
+        "overflow_anchor",
+        "overflow-anchor",
+        "OverflowAnchor",
+        Kind::Keyword(&["none", "auto"]),
+    ),
+    prop(
+        "text_decoration",
+        "text-decoration",
+        "TextDecoration",
+        Kind::Keyword(&["none", "underline", "line-through"]),
+    ),
+    prop(
+        "cursor",
+        "cursor",
+        "Cursor",
+        Kind::Keyword(&[
+            "pointer",
+            "default",
+            "text",
+            "grab",
+            "grabbing",
+            "move",
+            "not-allowed",
+            "help",
+        ]),
+    ),
+    prop(
+        "white_space",
+        "white-space",
+        "WhiteSpace",
+        Kind::Keyword(&["nowrap", "normal", "pre", "pre-wrap"]),
+    ),
+    prop_vendor(
+        "appearance",
+        "appearance",
+        "Appearance",
+        "-webkit-appearance",
+        Kind::Keyword(&["none", "auto"]),
+    ),
+    prop(
+        "user_select",
+        "user-select",
+        "UserSelect",
+        Kind::Keyword(&["none", "auto", "text"]),
+    ),
+    prop(
+        "pointer_events",
+        "pointer-events",
+        "PointerEvents",
+        Kind::Keyword(&["none", "auto"]),
+    ),
+    prop(
+        "box_sizing",
+        "box-sizing",
+        "BoxSizing",
+        Kind::Keyword(&["border-box", "content-box"]),
+    ),
     prop("inset", "inset", "Inset", Kind::LengthsOrAuto),
-    prop("text_align", "text-align", "TextAlign", Kind::Keyword(&["left", "center", "right", "justify"])),
+    prop(
+        "text_align",
+        "text-align",
+        "TextAlign",
+        Kind::Keyword(&["left", "center", "right", "justify"]),
+    ),
     prop("row_gap", "row-gap", "RowGap", Kind::Length),
-    prop("letter_spacing", "letter-spacing", "LetterSpacing", Kind::Length),
-    prop("text_transform", "text-transform", "TextTransform", Kind::Keyword(&["none", "uppercase", "lowercase", "capitalize"])),
-    prop("font_style", "font-style", "FontStyle", Kind::Keyword(&["normal", "italic", "oblique"])),
-    prop("font_variant_numeric", "font-variant-numeric", "FontVariantNumeric", Kind::Keyword(&["normal", "tabular-nums", "proportional-nums", "lining-nums", "oldstyle-nums"])),
-    prop("text_underline_offset", "text-underline-offset", "TextUnderlineOffset", Kind::Length),
-    prop("text_decoration_thickness", "text-decoration-thickness", "TextDecorationThickness", Kind::Length),
-    prop("text_wrap", "text-wrap", "TextWrap", Kind::Keyword(&["wrap", "nowrap", "balance", "pretty", "stable"])),
+    prop(
+        "letter_spacing",
+        "letter-spacing",
+        "LetterSpacing",
+        Kind::Length,
+    ),
+    prop(
+        "text_transform",
+        "text-transform",
+        "TextTransform",
+        Kind::Keyword(&["none", "uppercase", "lowercase", "capitalize"]),
+    ),
+    prop(
+        "font_style",
+        "font-style",
+        "FontStyle",
+        Kind::Keyword(&["normal", "italic", "oblique"]),
+    ),
+    prop(
+        "font_variant_numeric",
+        "font-variant-numeric",
+        "FontVariantNumeric",
+        Kind::Keyword(&[
+            "normal",
+            "tabular-nums",
+            "proportional-nums",
+            "lining-nums",
+            "oldstyle-nums",
+        ]),
+    ),
+    prop(
+        "text_underline_offset",
+        "text-underline-offset",
+        "TextUnderlineOffset",
+        Kind::Length,
+    ),
+    prop(
+        "text_decoration_thickness",
+        "text-decoration-thickness",
+        "TextDecorationThickness",
+        Kind::Length,
+    ),
+    prop(
+        "text_wrap",
+        "text-wrap",
+        "TextWrap",
+        Kind::Keyword(&["wrap", "nowrap", "balance", "pretty", "stable"]),
+    ),
     // Motion (the queue-viz cluster): transforms, offsets, SVG, will-change.
     prop("transform", "transform", "Transform", Kind::Transform),
     prop("filter", "filter", "Filter", Kind::Filter),
-    prop("transform_origin", "transform-origin", "TransformOrigin", Kind::Origin),
+    prop(
+        "transform_origin",
+        "transform-origin",
+        "TransformOrigin",
+        Kind::Origin,
+    ),
     prop("will_change", "will-change", "WillChange", Kind::Idents),
     prop("offset_path", "offset-path", "OffsetPath", Kind::OffsetPath),
-    prop("offset_distance", "offset-distance", "OffsetDistance", Kind::Length),
-    prop("offset_rotate", "offset-rotate", "OffsetRotate", Kind::Angle),
+    prop(
+        "offset_distance",
+        "offset-distance",
+        "OffsetDistance",
+        Kind::Length,
+    ),
+    prop(
+        "offset_rotate",
+        "offset-rotate",
+        "OffsetRotate",
+        Kind::Angle,
+    ),
     prop("stroke", "stroke", "Stroke", Kind::Color),
     prop("fill", "fill", "Fill", Kind::Background),
     prop("stroke_width", "stroke-width", "StrokeWidth", Kind::Length),
-    prop("stroke_linejoin", "stroke-linejoin", "StrokeLinejoin", Kind::Keyword(&["round", "miter", "bevel"])),
-    prop("stroke_linecap", "stroke-linecap", "StrokeLinecap", Kind::Keyword(&["butt", "round", "square"])),
-    prop("vector_effect", "vector-effect", "VectorEffect", Kind::Keyword(&["none", "non-scaling-stroke"])),
+    prop(
+        "stroke_linejoin",
+        "stroke-linejoin",
+        "StrokeLinejoin",
+        Kind::Keyword(&["round", "miter", "bevel"]),
+    ),
+    prop(
+        "stroke_linecap",
+        "stroke-linecap",
+        "StrokeLinecap",
+        Kind::Keyword(&["butt", "round", "square"]),
+    ),
+    prop(
+        "vector_effect",
+        "vector-effect",
+        "VectorEffect",
+        Kind::Keyword(&["none", "non-scaling-stroke"]),
+    ),
     prop("opacity", "opacity", "Opacity", Kind::LineHeight),
     prop("animation", "animation", "Animation", Kind::Animation),
     prop_vendor("mask", "mask", "Mask", "-webkit-mask", Kind::Mask),
@@ -313,7 +706,12 @@ pub fn property(name: &str) -> Option<&'static Property> {
 /// browser a conflict the cascade cannot see.
 fn box_sides(property: &Property) -> Option<[&'static str; 4]> {
     match property.rust {
-        "padding" => Some(["padding_top", "padding_right", "padding_bottom", "padding_left"]),
+        "padding" => Some([
+            "padding_top",
+            "padding_right",
+            "padding_bottom",
+            "padding_left",
+        ]),
         "margin" => Some(["margin_top", "margin_right", "margin_bottom", "margin_left"]),
         "inset" => Some(["top", "right", "bottom", "left"]),
         _ => None,
@@ -514,10 +912,20 @@ impl Condition {
             Condition::WebkitSliderThumb => "-wst".into(),
             Condition::Child(tag) => format!("-c-{tag}"),
             Condition::ChildEdge(tag, edge) => {
-                format!("-c-{tag}-{}", if *edge == "first-of-type" { "first" } else { "last" })
+                format!(
+                    "-c-{tag}-{}",
+                    if *edge == "first-of-type" {
+                        "first"
+                    } else {
+                        "last"
+                    }
+                )
             }
             Condition::SiblingNext(a, b, state) => {
-                format!("-n-{a}-{b}-{}", if *state == "checked" { "ck" } else { "fv" })
+                format!(
+                    "-n-{a}-{b}-{}",
+                    if *state == "checked" { "ck" } else { "fv" }
+                )
             }
             Condition::CheckedNthPairs(a, b, n) => format!("-p-{a}-{b}-{n}"),
             Condition::HoverChild(tag) => format!("-hc-{tag}"),
@@ -680,7 +1088,6 @@ impl VarGroup {
         }
         rule
     }
-
 }
 
 /// The crate-level prefix var names hash under: `i` + eight hex digits of the
@@ -850,9 +1257,15 @@ pub fn parse_theme(prefix: &str, vars_prefix: &str, tokens: TokenStream) -> Resu
                 };
 
                 let css = var_css_name(vars_prefix, &group.to_string(), &field.to_string());
-                let readable =
-                    format!("{}-{}", kebab(&group.to_string()), kebab(&field.to_string()));
-                let property = Prop::Var { css, ident: readable };
+                let readable = format!(
+                    "{}-{}",
+                    kebab(&group.to_string()),
+                    kebab(&field.to_string())
+                );
+                let property = Prop::Var {
+                    css,
+                    ident: readable,
+                };
                 let condition = Condition::None;
                 atoms.push(Atom {
                     class: class_name(prefix, &ident.to_string(), &property, &condition),
@@ -915,7 +1328,11 @@ pub fn document_list(
     };
     let mut out = Vec::new();
     for item in items.iter().filter_map(document_macro) {
-        out.extend(parse_document(prefix, vars_prefix, item.mac.tokens.clone())?);
+        out.extend(parse_document(
+            prefix,
+            vars_prefix,
+            item.mac.tokens.clone(),
+        )?);
     }
     Ok(out)
 }
@@ -952,13 +1369,22 @@ pub fn parse_document(
                 .iter()
                 .map(|decl| match decl.property.css_twin() {
                     Some(twin) => {
-                        format!("{}:{};{}:{}", decl.property.css(), decl.value, twin, decl.value)
+                        format!(
+                            "{}:{};{}:{}",
+                            decl.property.css(),
+                            decl.value,
+                            twin,
+                            decl.value
+                        )
                     }
                     None => format!("{}:{}", decl.property.css(), decl.value),
                 })
                 .collect();
             rules.push(DocumentRule {
-                name: format!("{prefix}-document-{}", selector.to_string().replace('_', "-")),
+                name: format!(
+                    "{prefix}-document-{}",
+                    selector.to_string().replace('_', "-")
+                ),
                 css: format!("{css_selector}{{{}}}", body.join(";")),
                 var_refs: decls.into_iter().flat_map(|decl| decl.var_refs).collect(),
             });
@@ -1121,7 +1547,10 @@ pub fn parse_vars(prefix: &str, body: TokenStream) -> Result<VarGroup> {
             let ident: Ident = input.parse()?;
             let group = ident.to_string();
             if !group.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-                return Err(Error::new(ident.span(), "var groups are CamelCase (`Palette`)"));
+                return Err(Error::new(
+                    ident.span(),
+                    "var groups are CamelCase (`Palette`)",
+                ));
             }
             let group_kebab = kebab(&group);
             let body;
@@ -1132,17 +1561,20 @@ pub fn parse_vars(prefix: &str, body: TokenStream) -> Result<VarGroup> {
                 body.parse::<Token![:]>()?;
                 // `angle("0deg")` and friends register an `@property`; anything else
                 // is the plain form, whose value's shape names its kind.
-                let (default, dark, kind, registered) = if body.peek(Ident) && body.peek2(token::Paren)
-                {
-                    let (syntax, initial, kind) = parse_registered(&body)?;
-                    (initial, None, kind, Some(syntax))
-                } else {
-                    let (default, dark, kind) = parse_var_value(&body)?;
-                    (default, dark, kind, None)
-                };
+                let (default, dark, kind, registered) =
+                    if body.peek(Ident) && body.peek2(token::Paren) {
+                        let (syntax, initial, kind) = parse_registered(&body)?;
+                        (initial, None, kind, Some(syntax))
+                    } else {
+                        let (default, dark, kind) = parse_var_value(&body)?;
+                        (default, dark, kind, None)
+                    };
                 let name = field.to_string();
                 if vars.iter().any(|v: &VarDecl| v.field == name) {
-                    return Err(Error::new(field.span(), format!("`{name}` is declared twice")));
+                    return Err(Error::new(
+                        field.span(),
+                        format!("`{name}` is declared twice"),
+                    ));
                 }
                 vars.push(VarDecl {
                     css_name: var_css_name(prefix, &group, &name),
@@ -1161,9 +1593,16 @@ pub fn parse_vars(prefix: &str, body: TokenStream) -> Result<VarGroup> {
                 return Err(input.error("vars! takes exactly one group"));
             }
             if vars.is_empty() {
-                return Err(Error::new(ident.span(), "an empty var group declares nothing"));
+                return Err(Error::new(
+                    ident.span(),
+                    "an empty var group declares nothing",
+                ));
             }
-            Ok(VarGroup { name: format!("{prefix}-{group_kebab}"), ident: group, vars })
+            Ok(VarGroup {
+                name: format!("{prefix}-{group_kebab}"),
+                ident: group,
+                vars,
+            })
         },
         body,
     )
@@ -1183,9 +1622,7 @@ fn parse_registered(input: ParseStream) -> Result<(&'static str, String, VarKind
         other => {
             return Err(Error::new(
                 ty.span(),
-                format!(
-                    "`{other}` is not a registered var type — `angle`, `length`, or `color`"
-                ),
+                format!("`{other}` is not a registered var type — `angle`, `length`, or `color`"),
             ))
         }
     };
@@ -1220,12 +1657,20 @@ fn parse_var_value(input: ParseStream) -> Result<(String, Option<String>, VarKin
         if input.peek(Lit) && !input.peek(LitStr) {
             let lit: Lit = input.parse()?;
             let (Lit::Int(_) | Lit::Float(_)) = &lit else {
-                return Err(Error::new(lit.span(), "a var's value is a string or a bare number"));
+                return Err(Error::new(
+                    lit.span(),
+                    "a var's value is a string or a bare number",
+                ));
             };
             let number = match &lit {
                 Lit::Int(int) if int.suffix().is_empty() => int.base10_digits().to_string(),
                 Lit::Float(float) if float.suffix().is_empty() => float.base10_digits().to_string(),
-                _ => return Err(Error::new(lit.span(), "numbers here are plain (no type suffix)")),
+                _ => {
+                    return Err(Error::new(
+                        lit.span(),
+                        "numbers here are plain (no type suffix)",
+                    ))
+                }
             };
             return Ok((number, VarKind::Number));
         }
@@ -1258,7 +1703,10 @@ fn parse_var_value(input: ParseStream) -> Result<(String, Option<String>, VarKin
         }
         let key = block.call(Ident::parse_any)?;
         if key != "dark" {
-            return Err(Error::new(key.span(), "`dark` is the one per-var condition (the working subset)"));
+            return Err(Error::new(
+                key.span(),
+                "`dark` is the one per-var condition (the working subset)",
+            ));
         }
         if kind != VarKind::Color {
             return Err(Error::new(
@@ -1319,7 +1767,13 @@ impl Atom {
     pub fn rule(&self) -> String {
         let class = &self.class;
         let decl = match self.property.css_twin() {
-            Some(twin) => format!("{}:{};{}:{}", self.property.css(), self.value, twin, self.value),
+            Some(twin) => format!(
+                "{}:{};{}:{}",
+                self.property.css(),
+                self.value,
+                twin,
+                self.value
+            ),
             None => format!("{}:{}", self.property.css(), self.value),
         };
         match &self.condition {
@@ -1395,7 +1849,9 @@ pub fn style_consts(module: &syn::ItemMod) -> Result<Vec<StyleConst<'_>>> {
     };
     let mut consts = Vec::new();
     for item in items {
-        let syn::Item::Const(item) = item else { continue };
+        let syn::Item::Const(item) = item else {
+            continue;
+        };
         if let Some(mac) = css_macro(item) {
             consts.push(StyleConst {
                 item,
@@ -1468,7 +1924,9 @@ fn parse_object(
             if condition != Condition::None {
                 return Err(Error::new(
                     key_span,
-                    format!("`{key}(…)` blocks sit at the top of a style, not inside another condition"),
+                    format!(
+                        "`{key}(…)` blocks sit at the top of a style, not inside another condition"
+                    ),
                 ));
             }
             input.parse::<Token![:]>()?;
@@ -1565,8 +2023,14 @@ fn parse_call_condition(key: &str, span: Span, input: ParseStream) -> Result<Con
     let tag = || -> Result<String> {
         let ident = args.call(Ident::parse_any)?;
         let name = ident.to_string();
-        if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
-            return Err(Error::new(ident.span(), format!("`{name}` is not an element name")));
+        if !name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        {
+            return Err(Error::new(
+                ident.span(),
+                format!("`{name}` is not an element name"),
+            ));
         }
         Ok(name)
     };
@@ -1581,7 +2045,10 @@ fn parse_call_condition(key: &str, span: Span, input: ParseStream) -> Result<Con
             match edge.to_string().as_str() {
                 "first" => Ok(Condition::ChildEdge(element, "first-of-type")),
                 "last" => Ok(Condition::ChildEdge(element, "last-of-type")),
-                _ => Err(Error::new(edge.span(), "a child run's edges are `first` and `last`")),
+                _ => Err(Error::new(
+                    edge.span(),
+                    "a child run's edges are `first` and `last`",
+                )),
             }
         }
         "hover_child" => Ok(Condition::HoverChild(tag()?)),
@@ -1590,13 +2057,20 @@ fn parse_call_condition(key: &str, span: Span, input: ParseStream) -> Result<Con
             let stateful = tag()?;
             args.parse::<Token![,]>()?;
             let styled = tag()?;
-            let state = if key == "checked_next" { "checked" } else { "focus-visible" };
+            let state = if key == "checked_next" {
+                "checked"
+            } else {
+                "focus-visible"
+            };
             Ok(Condition::SiblingNext(stateful, styled, state))
         }
         "max_width" => {
             let width: LitInt = args.parse()?;
             if width.suffix() != "px" {
-                return Err(Error::new(width.span(), "a breakpoint is a px width, e.g. `680px`"));
+                return Err(Error::new(
+                    width.span(),
+                    "a breakpoint is a px width, e.g. `680px`",
+                ));
             }
             Ok(Condition::MaxWidth(width.base10_parse()?))
         }
@@ -1610,7 +2084,10 @@ fn parse_call_condition(key: &str, span: Span, input: ParseStream) -> Result<Con
             // The selector list is written out, so the bound is the number of panels a
             // set can hold — a real limit, stated where it is enforced.
             if !(1..=12).contains(&n) {
-                return Err(Error::new(count.span(), "a checked set pairs 1 to 12 panels"));
+                return Err(Error::new(
+                    count.span(),
+                    "a checked set pairs 1 to 12 panels",
+                ));
             }
             Ok(Condition::CheckedNthPairs(radio, panel, n))
         }
@@ -1656,7 +2133,11 @@ fn block_condition(key: &str, span: Span) -> Result<Condition> {
                     format!("`{tag}` is a property — it takes a value, not a block"),
                 ));
             }
-            if tag.is_empty() || !tag.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+            if tag.is_empty()
+                || !tag
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            {
                 return Err(Error::new(
                     span,
                     format!("`{key}` is not a condition — expected `\":hover\"`, `dark`, `mobile`, `desktop`, or an element name"),
@@ -1692,7 +2173,10 @@ fn parse_value(
         })?;
         let tail = tail.value();
         if tail.trim().is_empty() {
-            return Err(Error::new(handle.span(), "animation needs a duration after the handle"));
+            return Err(Error::new(
+                handle.span(),
+                "animation needs a duration after the handle",
+            ));
         }
         return Ok((format!("{name} {}", tail.trim()), Vec::new()));
     }
@@ -1724,9 +2208,17 @@ fn parse_value(
                     if easing.len() <= 1
                         && is_duration(duration)
                         && easing.iter().all(|e| {
-                            matches!(*e, "ease" | "ease-in" | "ease-out" | "ease-in-out" | "linear")
+                            matches!(
+                                *e,
+                                "ease" | "ease-in" | "ease-out" | "ease-in-out" | "linear"
+                            )
                         }) => {}
-                _ => return Err(Error::new(input.span(), "a transition entry's timing is `\"<duration> [easing]\"`")),
+                _ => {
+                    return Err(Error::new(
+                        input.span(),
+                        "a transition entry's timing is `\"<duration> [easing]\"`",
+                    ))
+                }
             }
             parts.push(format!("{name} {timing}"));
             if list.peek(Token![,]) {
@@ -1774,7 +2266,10 @@ fn parse_value(
         return Ok((value, refs));
     }
     let lit: Lit = input.parse().map_err(|_| {
-        input.error(format!("`{}` expects a string value (or a bare number for the unitless properties)", property.rust))
+        input.error(format!(
+            "`{}` expects a string value (or a bare number for the unitless properties)",
+            property.rust
+        ))
     })?;
     let value = literal_value(&lit, property)?;
     Ok((value, Vec::new()))
@@ -1799,7 +2294,10 @@ fn parse_calc_term(
     if input.peek(token::Paren) {
         let inner;
         parenthesized!(inner in input);
-        return Ok(format!("({})", parse_calc_expr(&inner, vars_prefix, refs, kind)?));
+        return Ok(format!(
+            "({})",
+            parse_calc_expr(&inner, vars_prefix, refs, kind)?
+        ));
     }
     if input.peek(Ident) && input.peek2(Token![::]) {
         let group: Ident = input.parse()?;
@@ -1817,8 +2315,16 @@ fn parse_calc_term(
         .map_err(|_| input.error("a calc term is `0deg`, `1.5px`, a number, or `Group::field`"))?;
     let (digits, suffix) = match &lit {
         Lit::Int(int) => (int.base10_digits().to_string(), int.suffix().to_string()),
-        Lit::Float(float) => (float.base10_digits().to_string(), float.suffix().to_string()),
-        other => return Err(Error::new(other.span(), "a calc term is a number, with or without a unit")),
+        Lit::Float(float) => (
+            float.base10_digits().to_string(),
+            float.suffix().to_string(),
+        ),
+        other => {
+            return Err(Error::new(
+                other.span(),
+                "a calc term is a number, with or without a unit",
+            ))
+        }
     };
     // `100%` lexes as `100` then `%` — a percentage is a unit, not a suffix.
     let mut term = format!("{digits}{suffix}");
@@ -1826,7 +2332,10 @@ fn parse_calc_term(
         input.parse::<Token![%]>()?;
         term.push('%');
     } else if !suffix.is_empty() && !(is_length(&term) || is_angle(&term)) {
-        return Err(Error::new(lit.span(), format!("`{suffix}` is not a length or angle unit")));
+        return Err(Error::new(
+            lit.span(),
+            format!("`{suffix}` is not a length or angle unit"),
+        ));
     }
     Ok(term)
 }
@@ -1908,7 +2417,10 @@ fn parse_calc(
     input.parse::<Ident>()?; // `calc`
     let inner;
     parenthesized!(inner in input);
-    Ok(format!("calc({})", parse_calc_expr(&inner, vars_prefix, refs, kind)?))
+    Ok(format!(
+        "calc({})",
+        parse_calc_expr(&inner, vars_prefix, refs, kind)?
+    ))
 }
 
 /// An angle position inside a gradient: a literal, a var, or a `calc(…)`.
@@ -1957,7 +2469,10 @@ fn parse_transform_fn(
         }
     }
     if list.is_empty() {
-        return Err(Error::new(name.span(), format!("`{css}(…)` needs an argument")));
+        return Err(Error::new(
+            name.span(),
+            format!("`{css}(…)` needs an argument"),
+        ));
     }
     Ok(format!("{css}({})", list.join(", ")))
 }
@@ -2033,21 +2548,27 @@ fn parse_gradient(
     let head = if conic {
         let key: Ident = args.parse()?;
         if key != "from" {
-            return Err(Error::new(key.span(), "a conic gradient starts with `from: <angle>`"));
+            return Err(Error::new(
+                key.span(),
+                "a conic gradient starts with `from: <angle>`",
+            ));
         }
         args.parse::<Token![:]>()?;
         format!("from {}", parse_angle_value(&args, vars_prefix, refs)?)
     } else {
         // The extent keyword (`closest-side` &c.), as a string so it stays a value.
-        let extent: LitStr = args
-            .parse()
-            .map_err(|_| args.error("a radial gradient starts with its extent, e.g. `\"closest-side\"`"))?;
+        let extent: LitStr = args.parse().map_err(|_| {
+            args.error("a radial gradient starts with its extent, e.g. `\"closest-side\"`")
+        })?;
         let extent_value = extent.value();
         if !matches!(
             extent_value.as_str(),
             "closest-side" | "closest-corner" | "farthest-side" | "farthest-corner"
         ) {
-            return Err(Error::new(extent.span(), "extent is `closest-side`, `closest-corner`, `farthest-side` or `farthest-corner`"));
+            return Err(Error::new(
+                extent.span(),
+                "extent is `closest-side`, `closest-corner`, `farthest-side` or `farthest-corner`",
+            ));
         }
         extent_value
     };
@@ -2055,7 +2576,10 @@ fn parse_gradient(
 
     let key: Ident = args.parse()?;
     if key != "stops" {
-        return Err(Error::new(key.span(), "a gradient's colour stops are `stops: [ … ]`"));
+        return Err(Error::new(
+            key.span(),
+            "a gradient's colour stops are `stops: [ … ]`",
+        ));
     }
     args.parse::<Token![:]>()?;
     let list;
@@ -2080,12 +2604,19 @@ fn parse_gradient(
         }
     }
     if stops.is_empty() {
-        return Err(Error::new(key.span(), "a gradient needs at least one colour stop"));
+        return Err(Error::new(
+            key.span(),
+            "a gradient needs at least one colour stop",
+        ));
     }
     if args.peek(Token![,]) {
         args.parse::<Token![,]>()?;
     }
-    let name = if conic { "conic-gradient" } else { "radial-gradient" };
+    let name = if conic {
+        "conic-gradient"
+    } else {
+        "radial-gradient"
+    };
     Ok(format!("{name}({head}, {})", stops.join(", ")))
 }
 
@@ -2152,7 +2683,10 @@ fn literal_value(lit: &Lit, property: &Property) -> Result<String> {
                 _ => unreachable!(),
             };
             if !suffix.is_empty() {
-                return Err(Error::new(lit.span(), "numbers here are plain (no type suffix)"));
+                return Err(Error::new(
+                    lit.span(),
+                    "numbers here are plain (no type suffix)",
+                ));
             }
             match property.kind {
                 Kind::LineHeight | Kind::Number => Ok(number),
@@ -2171,7 +2705,10 @@ fn literal_value(lit: &Lit, property: &Property) -> Result<String> {
                 )),
             }
         }
-        other => Err(Error::new(other.span(), "expected a string or number value")),
+        other => Err(Error::new(
+            other.span(),
+            "expected a string or number value",
+        )),
     }
 }
 
@@ -2229,8 +2766,11 @@ fn value_tokens(value: &str) -> Vec<&str> {
 /// author owns; we check only the `calc(` wrapper and balanced parens, the same
 /// bound as `rgba(…)`).
 fn is_calc(part: &str) -> bool {
-    part.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')).is_some()
-        && part.bytes().filter(|&b| b == b'(').count() == part.bytes().filter(|&b| b == b')').count()
+    part.strip_prefix("calc(")
+        .and_then(|r| r.strip_suffix(')'))
+        .is_some()
+        && part.bytes().filter(|&b| b == b'(').count()
+            == part.bytes().filter(|&b| b == b')').count()
 }
 
 fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
@@ -2239,7 +2779,10 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
     let one = |what: &str| -> Result<&str> {
         match parts.as_slice() {
             [part] => Ok(part),
-            _ => Err(Error::new(span, format!("`{}` takes one {what}", property.rust))),
+            _ => Err(Error::new(
+                span,
+                format!("`{}` takes one {what}", property.rust),
+            )),
         }
     };
 
@@ -2257,7 +2800,9 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             if is_length(part) {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not a length (`\"2rem\"`, `\"860px\"`, `\"100%\"`, `\"0\"`)"))
+                err(format!(
+                    "`{part}` is not a length (`\"2rem\"`, `\"860px\"`, `\"100%\"`, `\"0\"`)"
+                ))
             }
         }
         Kind::Lengths | Kind::LengthsOrAuto => {
@@ -2267,7 +2812,10 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             }
             for part in &parts {
                 if !(is_length(part) || (auto && *part == "auto")) {
-                    return err(format!("`{part}` is not a length{}", if auto { " or `auto`" } else { "" }));
+                    return err(format!(
+                        "`{part}` is not a length{}",
+                        if auto { " or `auto`" } else { "" }
+                    ));
                 }
             }
             Ok(parts.join(" "))
@@ -2276,10 +2824,17 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             let part = one("length, `\"auto\"`, `\"none\"`, or an intrinsic size")?;
             // The intrinsic sizes are what a box asks its content for — the only
             // honest width for something sized by the text inside it.
-            if is_length(part) || matches!(part, "auto" | "none" | "max-content" | "min-content" | "fit-content") {
+            if is_length(part)
+                || matches!(
+                    part,
+                    "auto" | "none" | "max-content" | "min-content" | "fit-content"
+                )
+            {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not a length, `auto`, `none`, or an intrinsic size"))
+                err(format!(
+                    "`{part}` is not a length, `auto`, `none`, or an intrinsic size"
+                ))
             }
         }
         Kind::LengthOrAuto => {
@@ -2303,14 +2858,23 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             if is_color(part, &["transparent", "inherit", "currentcolor", "none"]) {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not a color (`\"#3ea5b0\"`, a color keyword, or `\"none\"`)"))
+                err(format!(
+                    "`{part}` is not a color (`\"#3ea5b0\"`, a color keyword, or `\"none\"`)"
+                ))
             }
         }
         Kind::ColorScheme => {
             let schemes = value_tokens(value);
-            match schemes.iter().find(|s| !matches!(**s, "light" | "dark" | "normal")) {
-                Some(bad) => err(format!("`{bad}` is not a color scheme (`light`, `dark`, `normal`)")),
-                None if schemes.is_empty() => err("color-scheme names at least one scheme".to_string()),
+            match schemes
+                .iter()
+                .find(|s| !matches!(**s, "light" | "dark" | "normal"))
+            {
+                Some(bad) => err(format!(
+                    "`{bad}` is not a color scheme (`light`, `dark`, `normal`)"
+                )),
+                None if schemes.is_empty() => {
+                    err("color-scheme names at least one scheme".to_string())
+                }
                 None => Ok(schemes.join(" ")),
             }
         }
@@ -2327,7 +2891,9 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             if part.parse::<f64>().is_ok() || is_length(part) {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not a line-height (a unitless number or a length)"))
+                err(format!(
+                    "`{part}` is not a line-height (a unitless number or a length)"
+                ))
             }
         }
         Kind::FontWeight => {
@@ -2335,7 +2901,9 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             if matches!(part, "normal" | "bold") {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not a font-weight — `\"normal\"`, `\"bold\"`, or a bare 100–900"))
+                err(format!(
+                    "`{part}` is not a font-weight — `\"normal\"`, `\"bold\"`, or a bare 100–900"
+                ))
             }
         }
         Kind::FontFamily => {
@@ -2371,20 +2939,29 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
                 {
                     Ok(parts.join(" "))
                 }
-                _ => err("box-shadow is `\"none\"`, or optional `inset` then 2–4 lengths then a color".into()),
+                _ => err(
+                    "box-shadow is `\"none\"`, or optional `inset` then 2–4 lengths then a color"
+                        .into(),
+                ),
             }
         }
         Kind::Gap => {
             if (1..=2).contains(&parts.len()) && parts.iter().all(|part| is_length(part)) {
                 Ok(parts.join(" "))
             } else {
-                err(format!("`{}` takes one or two lengths (`\"12px\"` or `\"1px 12px\"`)", property.rust))
+                err(format!(
+                    "`{}` takes one or two lengths (`\"12px\"` or `\"1px 12px\"`)",
+                    property.rust
+                ))
             }
         }
         Kind::GridTemplate => match parts.as_slice() {
             ["none"] => Ok("none".into()),
             ["subgrid"] => Ok("subgrid".into()),
-            [] => err(format!("`{}` needs a track list, `\"none\"`, or `\"subgrid\"`", property.rust)),
+            [] => err(format!(
+                "`{}` needs a track list, `\"none\"`, or `\"subgrid\"`",
+                property.rust
+            )),
             tracks if tracks.iter().all(|t| is_track_size(t) || is_line_names(t)) => {
                 Ok(parts.join(" "))
             }
@@ -2459,7 +3036,9 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
             if is_angle(part) {
                 Ok(part.to_string())
             } else {
-                err(format!("`{part}` is not an angle (`\"45deg\"`, `\"0.5turn\"`, or a `calc(…)`)"))
+                err(format!(
+                    "`{part}` is not an angle (`\"45deg\"`, `\"0.5turn\"`, or a `calc(…)`)"
+                ))
             }
         }
         Kind::Transform => {
@@ -2480,16 +3059,18 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
         }
         Kind::Idents => {
             if value.split(',').map(str::trim).all(is_css_ident) {
-                Ok(value.split(',').map(str::trim).collect::<Vec<_>>().join(", "))
+                Ok(value
+                    .split(',')
+                    .map(str::trim)
+                    .collect::<Vec<_>>()
+                    .join(", "))
             } else {
                 err("will-change is a comma list of property names".into())
             }
         }
         Kind::OffsetPath => {
             let part = one("`\"none\"` or a `path(\"…\")`")?;
-            if part == "none"
-                || (part.starts_with("path(") && part.ends_with(')'))
-            {
+            if part == "none" || (part.starts_with("path(") && part.ends_with(')')) {
                 Ok(part.to_string())
             } else {
                 err("offset-path is `\"none\"` or `path(\"…\")`".into())
@@ -2517,9 +3098,15 @@ fn validate(property: &Property, value: &str, span: Span) -> Result<String> {
 /// A single `transform` function token: `scale(…)`, `rotate(…)`, `translate(…)`,
 /// `translateX(…)`, `translateY(…)` — the interior is CSS the author owns.
 fn is_transform_fn(part: &str) -> bool {
-    ["scale(", "rotate(", "translate(", "translateX(", "translateY("]
-        .iter()
-        .any(|f| part.starts_with(f))
+    [
+        "scale(",
+        "rotate(",
+        "translate(",
+        "translateX(",
+        "translateY(",
+    ]
+    .iter()
+    .any(|f| part.starts_with(f))
         && part.ends_with(')')
 }
 
@@ -2527,8 +3114,16 @@ fn is_transform_fn(part: &str) -> bool {
 /// rest of the CSS filter primitives — the interior is CSS the author owns.
 fn is_filter_fn(part: &str) -> bool {
     [
-        "brightness(", "saturate(", "blur(", "contrast(", "grayscale(", "sepia(",
-        "invert(", "opacity(", "hue-rotate(", "drop-shadow(",
+        "brightness(",
+        "saturate(",
+        "blur(",
+        "contrast(",
+        "grayscale(",
+        "sepia(",
+        "invert(",
+        "opacity(",
+        "hue-rotate(",
+        "drop-shadow(",
     ]
     .iter()
     .any(|f| part.starts_with(f))
@@ -2543,7 +3138,9 @@ fn is_track_size(part: &str) -> bool {
         || part
             .strip_suffix("fr")
             .is_some_and(|number| !number.is_empty() && number.parse::<f64>().is_ok())
-        || (["minmax(", "repeat(", "fit-content("].iter().any(|f| part.starts_with(f))
+        || (["minmax(", "repeat(", "fit-content("]
+            .iter()
+            .any(|f| part.starts_with(f))
             && part.ends_with(')'))
 }
 
@@ -2571,7 +3168,8 @@ fn is_length(part: &str) -> bool {
 /// A CSS percentage (`40%`, `-10%`) — a numeric with the one unit, never `calc`.
 fn is_percentage(part: &str) -> bool {
     let part = part.strip_prefix('-').unwrap_or(part);
-    part.strip_suffix('%').is_some_and(|number| !number.is_empty() && number.parse::<f64>().is_ok())
+    part.strip_suffix('%')
+        .is_some_and(|number| !number.is_empty() && number.parse::<f64>().is_ok())
 }
 
 /// A CSS angle (`45deg`, `0.5turn`, `1rad`) — or a `calc(…)` producing one.
@@ -2640,7 +3238,10 @@ mod tests {
     }
 
     fn style_err(body: TokenStream) -> String {
-        parse_style("i0badf00d", "v0badf00d", "PAGE", body).map(drop).unwrap_err().to_string()
+        parse_style("i0badf00d", "v0badf00d", "PAGE", body)
+            .map(drop)
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
@@ -2682,7 +3283,12 @@ mod tests {
              {syntax:'<length>';inherits:false;initial-value:0px;}"
         );
 
-        let vars_err = |body| parse_vars("v0badf00d", body).map(drop).unwrap_err().to_string();
+        let vars_err = |body| {
+            parse_vars("v0badf00d", body)
+                .map(drop)
+                .unwrap_err()
+                .to_string()
+        };
         assert!(
             vars_err(quote! { pub Sweep { edge: length("10%") } })
                 .contains("not a valid initial value"),
@@ -2729,12 +3335,18 @@ mod tests {
             dark: { color: Palette::ink_muted },
         }});
         assert_eq!(atoms[0].value, "var(--v0badf00d-palette-accent)");
-        assert_eq!(atoms[0].var_refs, vec![("Palette".to_string(), "accent".to_string(), VarKind::Color)]);
+        assert_eq!(
+            atoms[0].var_refs,
+            vec![("Palette".to_string(), "accent".to_string(), VarKind::Color)]
+        );
         assert_eq!(
             atoms[0].value,
             format!("var({})", var_css_name("v0badf00d", "Palette", "accent"))
         );
-        assert_eq!(atoms[1].rule(), ".i0badf00d-page-background{background:var(--v0badf00d-palette-page)}");
+        assert_eq!(
+            atoms[1].rule(),
+            ".i0badf00d-page-background{background:var(--v0badf00d-palette-page)}"
+        );
         assert_eq!(
             atoms[2].rule(),
             "@media (prefers-color-scheme: dark){.i0badf00d-page-color-k{color:var(--v0badf00d-palette-ink-muted)}}"
@@ -2761,7 +3373,10 @@ mod tests {
         // everything else a length, which is what the *function* means rather than what the
         // author remembered to pass.
         let atoms = style(quote! {{ transform: translate_y(calc(Knob::at * 100%)) }});
-        assert_eq!(atoms[0].value, "translateY(calc(var(--v0badf00d-knob-at) * 100%))");
+        assert_eq!(
+            atoms[0].value,
+            "translateY(calc(var(--v0badf00d-knob-at) * 100%))"
+        );
         // A factor counts the other operand rather than measuring anything, so the handle is
         // a `Number` even though the calc it sits in produces a length.
         assert_eq!(
@@ -2779,11 +3394,17 @@ mod tests {
         );
 
         let listed = style(quote! {{ transform: translate_x(4px) rotate(Motion::a) }});
-        assert_eq!(listed[0].value, "translateX(4px) rotate(var(--v0badf00d-motion-a))");
+        assert_eq!(
+            listed[0].value,
+            "translateX(4px) rotate(var(--v0badf00d-motion-a))"
+        );
         assert_eq!(listed[0].var_refs[0].2, VarKind::Angle);
 
         // The string form still holds, so a transform with nothing to resolve stays one.
-        assert_eq!(style(quote! {{ transform: "rotate(360deg)" }})[0].value, "rotate(360deg)");
+        assert_eq!(
+            style(quote! {{ transform: "rotate(360deg)" }})[0].value,
+            "rotate(360deg)"
+        );
 
         assert!(style_err(quote! {{ transform: skew(4deg) }}).contains("is not a transform"));
         assert!(style_err(quote! {{ transform: translate_y(min(1px,2px)) }})
@@ -2820,10 +3441,12 @@ mod tests {
             atoms[0].rule(),
             "@media (max-width: 640px){.i0badf00d-page-font-size-m-e-h1 h1{font-size:1.75rem}}"
         );
-        assert!(style_err(quote! {{ h1: { mobile: { font_size: "1rem" } } }})
-            .contains("media-outside"));
-        assert!(style_err(quote! {{ mobile: { ":hover": { color: "#fff" } } }})
-            .contains("don't nest"));
+        assert!(
+            style_err(quote! {{ h1: { mobile: { font_size: "1rem" } } }}).contains("media-outside")
+        );
+        assert!(
+            style_err(quote! {{ mobile: { ":hover": { color: "#fff" } } }}).contains("don't nest")
+        );
     }
 
     #[test]
@@ -2831,13 +3454,24 @@ mod tests {
         assert!(style_err(quote! {{ display: Palette::accent }}).contains("cannot take a var"));
         assert!(style_err(quote! {{ border: Palette::line }}).contains("cannot take a var"));
 
-        let vars_err = |body| parse_vars("v0badf00d", body).map(drop).unwrap_err().to_string();
+        let vars_err = |body| {
+            parse_vars("v0badf00d", body)
+                .map(drop)
+                .unwrap_err()
+                .to_string()
+        };
         assert!(vars_err(quote! { pub palette { a: "#fff" } }).contains("CamelCase"));
-        assert!(vars_err(quote! { pub Palette { a: "#fff", a: "#000" } }).contains("declared twice"));
-        assert!(vars_err(quote! { pub Palette { a: { "#fff", mobile: "#000" } } })
-            .contains("`dark` is the one per-var condition"));
-        assert!(vars_err(quote! { pub Space { a: { "8px", dark: "12px" } } })
-            .contains("`dark` twins are for color vars"));
+        assert!(
+            vars_err(quote! { pub Palette { a: "#fff", a: "#000" } }).contains("declared twice")
+        );
+        assert!(
+            vars_err(quote! { pub Palette { a: { "#fff", mobile: "#000" } } })
+                .contains("`dark` is the one per-var condition")
+        );
+        assert!(
+            vars_err(quote! { pub Space { a: { "8px", dark: "12px" } } })
+                .contains("`dark` twins are for color vars")
+        );
         assert!(vars_err(quote! { pub Palette {} }).contains("declares nothing"));
     }
 
@@ -2859,7 +3493,13 @@ mod tests {
         let kinds: Vec<VarKind> = group.vars.iter().map(|v| v.kind).collect();
         assert_eq!(
             kinds,
-            [VarKind::Color, VarKind::Length, VarKind::Number, VarKind::FontStack, VarKind::Color]
+            [
+                VarKind::Color,
+                VarKind::Length,
+                VarKind::Number,
+                VarKind::FontStack,
+                VarKind::Color
+            ]
         );
 
         let atoms = style(quote! {{
@@ -2911,7 +3551,10 @@ mod tests {
                 "i0badf00d-page-color",
             ]
         );
-        assert_eq!(atoms[0].rule(), ".i0badf00d-page-max-width{max-width:860px}");
+        assert_eq!(
+            atoms[0].rule(),
+            ".i0badf00d-page-max-width{max-width:860px}"
+        );
         assert_eq!(atoms[5].value, "1.6");
         assert_eq!(atoms[6].value, "600");
     }
@@ -2941,7 +3584,10 @@ mod tests {
         // The condition suffixes the class and wraps the rule, and it does so per
         // *longhand*: a shorthand under a condition expands there too, so a mobile
         // `padding` and a base `padding_left` still collide on one key.
-        assert_eq!(rule_of("i0badf00d-page-padding-top"), ".i0badf00d-page-padding-top{padding-top:2rem}");
+        assert_eq!(
+            rule_of("i0badf00d-page-padding-top"),
+            ".i0badf00d-page-padding-top{padding-top:2rem}"
+        );
         assert_eq!(
             rule_of("i0badf00d-page-background-h"),
             ".i0badf00d-page-background-h:hover{background:#f4f6f8}"
@@ -2962,7 +3608,11 @@ mod tests {
             rule_of("i0badf00d-page-background-e-pre"),
             ".i0badf00d-page-background-e-pre pre{background:#11151d}"
         );
-        assert_eq!(by_class.len(), 15, "four sides in each of three conditions, plus three others");
+        assert_eq!(
+            by_class.len(),
+            15,
+            "four sides in each of three conditions, plus three others"
+        );
     }
 
     #[test]
@@ -3039,7 +3689,8 @@ mod tests {
 
         // The families that do expand, pinned by their arity so a dropped side or facet
         // is a failure rather than a silently narrower expansion.
-        let arity = |rust: &str, value: &str| expand_shorthand(self::property(rust).unwrap(), value).len();
+        let arity =
+            |rust: &str, value: &str| expand_shorthand(self::property(rust).unwrap(), value).len();
         assert_eq!(arity("padding", "0"), 4);
         assert_eq!(arity("margin", "0 auto"), 4);
         assert_eq!(arity("inset", "0"), 4);
@@ -3079,10 +3730,18 @@ mod tests {
                 "auto",
                 "-2px",
                 // `border: "1px solid #ddd"` is four sides of three facets.
-                "1px", "solid", "#ddd",
-                "1px", "solid", "#ddd",
-                "1px", "solid", "#ddd",
-                "1px", "solid", "#ddd",
+                "1px",
+                "solid",
+                "#ddd",
+                "1px",
+                "solid",
+                "#ddd",
+                "1px",
+                "solid",
+                "#ddd",
+                "1px",
+                "solid",
+                "#ddd",
                 "0 1px 3px #00000022",
                 "background 0.2s ease-in-out",
                 "none",
@@ -3112,7 +3771,9 @@ mod tests {
     fn unknown_properties_and_conditions_fail_loud() {
         assert!(style_err(quote! {{ float: "left" }}).contains("property table"));
         assert!(style_err(quote! {{ ":focus": { color: "#fff" } }}).contains("\":hover\""));
-        assert!(style_err(quote! {{ padding: { top: "1rem" } }}).contains("takes a value, not a block"));
+        assert!(
+            style_err(quote! {{ padding: { top: "1rem" } }}).contains("takes a value, not a block")
+        );
         assert!(style_err(quote! {{ Dark: { color: "#fff" } }}).contains("not a condition"));
         assert!(style_err(quote! {{ dark: { mobile: { color: "#fff" } } }}).contains("don't nest"));
     }
@@ -3168,13 +3829,21 @@ mod tests {
             consts.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
             ["PAGE", "CARD"]
         );
-        let atoms = parse_style("i0badf00d", "v0badf00d", &consts[0].name, consts[0].body.clone()).unwrap();
+        let atoms = parse_style(
+            "i0badf00d",
+            "v0badf00d",
+            &consts[0].name,
+            consts[0].body.clone(),
+        )
+        .unwrap();
         assert_eq!(atoms[0].class, "i0badf00d-page-padding-top");
     }
 
     #[test]
     fn a_module_without_a_body_is_rejected() {
-        let module: syn::ItemMod = syn::parse_quote!(mod styles;);
+        let module: syn::ItemMod = syn::parse_quote!(
+            mod styles;
+        );
         assert!(style_consts(&module)
             .map(drop)
             .unwrap_err()

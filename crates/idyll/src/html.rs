@@ -71,12 +71,19 @@ enum Node {
     /// as its children only — the anchor itself is scaffolding. A detached anchor (a
     /// `keep` branch switched away) keeps its children but serializes nothing until
     /// re-attached — the fold's mirror of the browser's detach/attach cycle.
-    Anchor { children: Vec<usize>, detached: bool },
+    Anchor {
+        children: Vec<usize>,
+        detached: bool,
+    },
     /// A live boundary ([`TplNode::Live`](crate::template::TplNode::Live)):
     /// live-ness stays typed through the arena (so folding back to IR preserves it);
     /// the HTML edge serializes it as its addressable wrapper element. `fallback` is
     /// what the wrapper carries when nothing painted into it.
-    Live { name: String, key: Option<String>, fallback: Vec<usize> },
+    Live {
+        name: String,
+        key: Option<String>,
+        fallback: Vec<usize>,
+    },
 }
 
 /// The stateful fold: feed it the app's templates (IR) and its command stream, read the
@@ -357,7 +364,11 @@ impl HtmlFold {
                 }
                 count
             }
-            Node::Live { name, key, fallback } => {
+            Node::Live {
+                name,
+                key,
+                fallback,
+            } => {
                 // The header's fallback count is patched after its subtree emits, the
                 // same shape `Node::Element` uses below.
                 let header = out.len();
@@ -373,7 +384,12 @@ impl HtmlFold {
                 };
                 1
             }
-            Node::Element { tag, attrs, children, .. } => {
+            Node::Element {
+                tag,
+                attrs,
+                children,
+                ..
+            } => {
                 // Children emit first (their count patches the header afterwards).
                 let header = out.len();
                 out.push(TplNode::Text("".into()));
@@ -408,7 +424,12 @@ impl HtmlFold {
         for segment in self.segments() {
             match segment {
                 BodySegment::Html(html) => out.push_str(html.as_str()),
-                BodySegment::Live { name, instance, key, fallback } => {
+                BodySegment::Live {
+                    name,
+                    instance,
+                    key,
+                    fallback,
+                } => {
                     // Everything-known-up-front: no mount happened here, so no island is
                     // claimed static — the browser mounts each wrapper as usual.
                     out.push_str(&live_wrapper_open(&name, key.as_deref(), false));
@@ -465,7 +486,11 @@ impl HtmlFold {
             // by whoever composes the paint into it ([`live_wrapper_open`]/[`html`], the
             // streaming server), because whether the island is a static paint is knowable
             // only where the mount happened, not here in the parent's fold.
-            Node::Live { name, key, fallback } => {
+            Node::Live {
+                name,
+                key,
+                fallback,
+            } => {
                 let instance = {
                     let counter = instances.entry(name.as_str()).or_insert(0);
                     let instance = *counter;
@@ -532,18 +557,28 @@ impl HtmlFold {
         *cursor += 1;
         match node {
             TplNode::Text(text) => self.push(Node::Text(text.to_string())),
-            TplNode::DangerouslyUnescapedHtml(markup) => self.push(Node::Unescaped(markup.to_string())),
+            TplNode::DangerouslyUnescapedHtml(markup) => {
+                self.push(Node::Unescaped(markup.to_string()))
+            }
             TplNode::TextSlot(slot) => {
                 let idx = self.push(Node::Text(String::new()));
                 self.slot_scratch.insert(*slot, idx);
                 idx
             }
             TplNode::AnchorSlot(slot) => {
-                let idx = self.push(Node::Anchor { children: Vec::new(), detached: false });
+                let idx = self.push(Node::Anchor {
+                    children: Vec::new(),
+                    detached: false,
+                });
                 self.slot_scratch.insert(*slot, idx);
                 idx
             }
-            TplNode::Element { tag, attrs, slot, children } => {
+            TplNode::Element {
+                tag,
+                attrs,
+                slot,
+                children,
+            } => {
                 let idx = self.push(Node::Element {
                     tag: tag.to_string(),
                     attrs: attrs
@@ -567,14 +602,19 @@ impl HtmlFold {
                 }
                 idx
             }
-            TplNode::Live { name, key, fallback } => {
+            TplNode::Live {
+                name,
+                key,
+                fallback,
+            } => {
                 let idx = self.push(Node::Live {
                     name: name.to_string(),
                     key: key.as_ref().map(|k| k.to_string()),
                     fallback: Vec::new(),
                 });
-                let fallback_idxs: Vec<usize> =
-                    (0..*fallback).map(|_| self.insert_ir(nodes, cursor)).collect();
+                let fallback_idxs: Vec<usize> = (0..*fallback)
+                    .map(|_| self.insert_ir(nodes, cursor))
+                    .collect();
                 for &c in &fallback_idxs {
                     self.parent.insert(c, idx);
                 }
@@ -598,7 +638,10 @@ impl HtmlFold {
         if let Some(&idx) = self.node_map.get(&id) {
             return idx;
         }
-        let idx = self.push(Node::Anchor { children: Vec::new(), detached: false });
+        let idx = self.push(Node::Anchor {
+            children: Vec::new(),
+            detached: false,
+        });
         self.node_map.insert(id, idx);
         idx
     }
@@ -734,9 +777,15 @@ struct SegmentSink {
 impl SegmentSink {
     fn live(&mut self, name: String, instance: u32, key: Option<String>, fallback: Html) {
         if !self.buf.is_empty() {
-            self.segments.push(BodySegment::Html(Html(std::mem::take(&mut self.buf))));
+            self.segments
+                .push(BodySegment::Html(Html(std::mem::take(&mut self.buf))));
         }
-        self.segments.push(BodySegment::Live { name, instance, key, fallback });
+        self.segments.push(BodySegment::Live {
+            name,
+            instance,
+            key,
+            fallback,
+        });
     }
 
     fn finish(mut self) -> Vec<BodySegment> {
@@ -769,7 +818,10 @@ mod strictness {
     #[should_panic(expected = "never introduced")]
     fn a_consuming_op_on_an_unintroduced_id_is_refused() {
         let mut fold = HtmlFold::new();
-        fold.apply(&DomCommand::SetText { node_id: NodeId(7), text: "orphan".into() });
+        fold.apply(&DomCommand::SetText {
+            node_id: NodeId(7),
+            text: "orphan".into(),
+        });
     }
 
     #[test]
@@ -786,7 +838,10 @@ mod strictness {
     #[should_panic(expected = "never introduced")]
     fn a_move_after_an_unintroduced_anchor_is_refused() {
         let mut fold = HtmlFold::new();
-        fold.apply(&DomCommand::MoveFragment { anchor_id: NodeId(1), after_anchor: NodeId(2) });
+        fold.apply(&DomCommand::MoveFragment {
+            anchor_id: NodeId(1),
+            after_anchor: NodeId(2),
+        });
     }
 }
 
@@ -807,7 +862,9 @@ pub fn view_html(
         template_id: crate::driver::TemplateId(0),
         template: rendered.template().clone(),
     });
-    fold.apply(&DomCommand::MountRoot { template_id: crate::driver::TemplateId(0) });
+    fold.apply(&DomCommand::MountRoot {
+        template_id: crate::driver::TemplateId(0),
+    });
     fold.html()
 }
 
@@ -821,7 +878,9 @@ pub fn view_segments(rendered: &crate::template::View) -> Vec<BodySegment> {
         template_id: crate::driver::TemplateId(0),
         template: rendered.template().clone(),
     });
-    fold.apply(&DomCommand::MountRoot { template_id: crate::driver::TemplateId(0) });
+    fold.apply(&DomCommand::MountRoot {
+        template_id: crate::driver::TemplateId(0),
+    });
     fold.segments()
 }
 

@@ -57,7 +57,10 @@ pub struct Rendering<F> {
 
 impl<F: Future> Rendering<F> {
     pub fn new(future: F, witness: RenderWitness) -> Self {
-        Rendering { future: Box::pin(future), witness }
+        Rendering {
+            future: Box::pin(future),
+            witness,
+        }
     }
 }
 
@@ -85,7 +88,10 @@ pub enum Resolved<F: Future> {
 /// Polled with the parent's waker, so when a suspended child's data lands the parent re-polls
 /// down to here and the child advances to render.
 pub fn run_to_render<F: Future>(rendering: Rendering<F>) -> RunToRender<F> {
-    RunToRender { fut: Some(rendering.future), witness: rendering.witness }
+    RunToRender {
+        fut: Some(rendering.future),
+        witness: rendering.witness,
+    }
 }
 
 pub struct RunToRender<F> {
@@ -100,7 +106,10 @@ impl<F: Future> Future for RunToRender<F> {
         // `RunToRender` owns the boxed future by value; it is `Unpin`, so a plain `&mut` is
         // sound (the boxed future is what's pinned, and it never moves out until handed off).
         let this = self.get_mut();
-        let fut = this.fut.as_mut().expect("run_to_render polled after it resolved");
+        let fut = this
+            .fut
+            .as_mut()
+            .expect("run_to_render polled after it resolved");
         match fut.as_mut().poll(cx) {
             Poll::Ready(output) => {
                 this.fut = None; // the future completed — drop it, keep only its output
@@ -111,9 +120,9 @@ impl<F: Future> Future for RunToRender<F> {
                 }
             }
             // Taking the marked witness is the transition to the live phase.
-            Poll::Pending if this.witness.take() => {
-                Poll::Ready(Resolved::Live(this.fut.take().expect("present until taken")))
-            }
+            Poll::Pending if this.witness.take() => Poll::Ready(Resolved::Live(
+                this.fut.take().expect("present until taken"),
+            )),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -199,7 +208,11 @@ mod tests {
         let mut rtr = run_to_render(Rendering::new(toy, witness));
         match drive(Pin::new(&mut rtr), 10).expect("resolves within budget") {
             Resolved::Live(fut) => {
-                assert_eq!(*log.borrow(), ["child:render"], "rendered exactly once, still live");
+                assert_eq!(
+                    *log.borrow(),
+                    ["child:render"],
+                    "rendered exactly once, still live"
+                );
                 // The still-live future is what the executor would drive; dropping it here
                 // stands in for cancel — it tears down.
                 drop(fut);
@@ -260,7 +273,10 @@ mod tests {
             name: "slow",
         };
         let mut rtr = run_to_render(Rendering::new(toy, witness));
-        assert!(drive(Pin::new(&mut rtr), 5).is_none(), "still suspended, not rendered");
+        assert!(
+            drive(Pin::new(&mut rtr), 5).is_none(),
+            "still suspended, not rendered"
+        );
     }
 
     /// The cancel-guard tree: a parent holds its children's guards, then its own cleanup.
@@ -289,10 +305,17 @@ mod tests {
         let log = Rc::new(RefCell::new(Vec::new()));
         let guard = |name, children| Guard {
             children,
-            cleanup: OnDrop { name, log: Rc::clone(&log) },
+            cleanup: OnDrop {
+                name,
+                log: Rc::clone(&log),
+            },
         };
         let root = guard("root", vec![guard("mid", vec![guard("leaf", vec![])])]);
         drop(root);
-        assert_eq!(*log.borrow(), ["leaf", "mid", "root"], "unmount runs child before parent");
+        assert_eq!(
+            *log.borrow(),
+            ["leaf", "mid", "root"],
+            "unmount runs child before parent"
+        );
     }
 }

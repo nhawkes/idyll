@@ -77,12 +77,16 @@ struct TableDesc {
 }
 
 fn ref_type(rt: wasmparser::RefType) -> wasm_encoder::RefType {
-    RoundtripReencoder.ref_type(rt).expect("core ref type re-encodes")
+    RoundtripReencoder
+        .ref_type(rt)
+        .expect("core ref type re-encodes")
 }
 
 fn global_type(gt: wasmparser::GlobalType) -> wasm_encoder::GlobalType {
     wasm_encoder::GlobalType {
-        val_type: RoundtripReencoder.val_type(gt.content_type).expect("global val type"),
+        val_type: RoundtripReencoder
+            .val_type(gt.content_type)
+            .expect("global val type"),
         mutable: gt.mutable,
         shared: gt.shared,
     }
@@ -124,7 +128,8 @@ fn parse_core(wasm: &[u8]) -> Result<Core<'_>> {
             }
             Payload::FunctionSection(r) => {
                 for ty in r {
-                    c.func_types.push(ty.context("decoding a function type index")?);
+                    c.func_types
+                        .push(ty.context("decoding a function type index")?);
                 }
             }
             Payload::TableSection(r) => {
@@ -148,7 +153,8 @@ fn parse_core(wasm: &[u8]) -> Result<Core<'_>> {
             Payload::GlobalSection(r) => {
                 c.globals = Some(&wasm[r.range()]);
                 for g in r.clone() {
-                    c.global_types.push(global_type(g.context("decoding a global")?.ty));
+                    c.global_types
+                        .push(global_type(g.context("decoding a global")?.ty));
                 }
             }
             Payload::ExportSection(r) => {
@@ -162,7 +168,8 @@ fn parse_core(wasm: &[u8]) -> Result<Core<'_>> {
                         wasmparser::ExternalKind::Tag => ExportKind::Tag,
                         other => bail!("unsupported export kind {other:?} in the core"),
                     };
-                    c.exports.push((export.name.to_string(), kind, export.index));
+                    c.exports
+                        .push((export.name.to_string(), kind, export.index));
                 }
             }
             Payload::StartSection { func, .. } => c.start = Some(func),
@@ -226,7 +233,9 @@ fn scan_body<T>(
     mut pick: impl FnMut(&Operator) -> Option<T>,
 ) -> Result<Vec<T>> {
     let mut out = Vec::new();
-    let mut reader = body.get_operators_reader().context("reading a function body")?;
+    let mut reader = body
+        .get_operators_reader()
+        .context("reading a function body")?;
     while !reader.eof() {
         if let Some(v) = pick(&reader.read().context("decoding an operator")?) {
             out.push(v);
@@ -276,7 +285,10 @@ pub fn split(core: &[u8], assigned: &[Vec<u32>]) -> Result<(Vec<u8>, Vec<(usize,
         return Ok((module.finish(), Vec::new()));
     }
 
-    let table = c.table.as_ref().context("splitting needs a table; the core has none")?;
+    let table = c
+        .table
+        .as_ref()
+        .context("splitting needs a table; the core has none")?;
 
     // Table slots. Existing active segments already give some deferred funcs a slot;
     // deferred funcs a primary function calls directly need one appended.
@@ -402,7 +414,9 @@ fn emit_primary(
     module.section(&exports);
 
     if let Some(start) = c.start {
-        module.section(&wasm_encoder::StartSection { function_index: start });
+        module.section(&wasm_encoder::StartSection {
+            function_index: start,
+        });
     }
 
     // Element segments: keep existing, append a segment initializing the new slots to their
@@ -478,7 +492,10 @@ fn rewrite_entry(
                 let slot = slot_of[&function_index];
                 let type_index = c.func_type(function_index);
                 func.instruction(&Instruction::I32Const(slot as i32));
-                func.instruction(&Instruction::CallIndirect { type_index, table_index: 0 });
+                func.instruction(&Instruction::CallIndirect {
+                    type_index,
+                    table_index: 0,
+                });
                 continue;
             }
         }
@@ -545,7 +562,11 @@ fn emit_chunk(
 
     let mut imports = ImportSection::new();
     for &f in &imported_funcs {
-        imports.import("", &export_name_func(f), EntityType::Function(c.func_type(f)));
+        imports.import(
+            "",
+            &export_name_func(f),
+            EntityType::Function(c.func_type(f)),
+        );
     }
     if c.memory_count > 0 {
         imports.import(
@@ -596,7 +617,11 @@ fn emit_chunk(
         }
     }
     for (slot, func) in run_lengths(&by_slot) {
-        elems.active(None, &ConstExpr::i32_const(slot as i32), Elements::Functions(func.into()));
+        elems.active(
+            None,
+            &ConstExpr::i32_const(slot as i32),
+            Elements::Functions(func.into()),
+        );
     }
     // Declare the functions this chunk's bodies take references to, so `ref.func` is legal.
     let mut declared: BTreeSet<u32> = BTreeSet::new();
@@ -613,7 +638,10 @@ fn emit_chunk(
 
     // Code: each function re-encoded with references remapped into the chunk space.
     let mut code = CodeSection::new();
-    let mut reenc = RemapReencoder { remap: &remap, unmapped: Vec::new() };
+    let mut reenc = RemapReencoder {
+        remap: &remap,
+        unmapped: Vec::new(),
+    };
     for &f in funcs {
         let body = c.body(f).clone();
         reenc
@@ -667,7 +695,10 @@ fn raw_from(wasm: &[u8], id: u8) -> Option<RawSection<'_>> {
     for payload in Parser::new(0).parse_all(wasm) {
         if let Ok(Payload::FunctionSection(r)) = payload {
             if id == 3 {
-                return Some(RawSection { id, data: &wasm[r.range()] });
+                return Some(RawSection {
+                    id,
+                    data: &wasm[r.range()],
+                });
             }
         }
     }
@@ -727,7 +758,9 @@ mod tests {
             .expect("the primary validates with start + data-count in order");
         assert_eq!(chunks.len(), 1);
         for (_, bytes) in &chunks {
-            wasmparser::Validator::new().validate_all(bytes).expect("the chunk validates");
+            wasmparser::Validator::new()
+                .validate_all(bytes)
+                .expect("the chunk validates");
         }
     }
 }

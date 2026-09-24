@@ -57,7 +57,9 @@ impl crate::schema::DescribeRecord for Request {
 impl crate::schema::SchemaType for Request {
     fn register(schema: &mut Schema) {
         if schema.record("Request").is_none() {
-            schema.values.push(<Request as crate::schema::DescribeRecord>::describe());
+            schema
+                .values
+                .push(<Request as crate::schema::DescribeRecord>::describe());
         }
     }
 }
@@ -78,21 +80,33 @@ pub trait RouteRoots {
 /// [`RecordDef`]. Boot calls this and fails loud — a drifted contract is a config
 /// error, not a request-time surprise.
 pub fn validate_route_contract(schema: &Schema) -> Result<RecordDef, ValidateError> {
-    let root = schema.root_def(ROUTE_ROOT).ok_or(ValidateError::NoRouteRoot)?;
+    let root = schema
+        .root_def(ROUTE_ROOT)
+        .ok_or(ValidateError::NoRouteRoot)?;
     if root.list {
         return Err(ValidateError::RouteRootIsList);
     }
     match root.args.as_slice() {
         [arg] if arg.name == "request" && arg.ty == FieldType::value("Request") => {}
-        other => return Err(ValidateError::RouteRootArgs { found: other.to_vec() }),
+        other => {
+            return Err(ValidateError::RouteRootArgs {
+                found: other.to_vec(),
+            })
+        }
     }
-    if schema.record("Request").map(|r| r != &<Request as crate::schema::DescribeRecord>::describe()).unwrap_or(true) {
+    if schema
+        .record("Request")
+        .map(|r| r != &<Request as crate::schema::DescribeRecord>::describe())
+        .unwrap_or(true)
+    {
         return Err(ValidateError::RequestNotPublished);
     }
 
     let page = schema
         .record(&root.output)
-        .ok_or_else(|| ValidateError::UnknownPageRecord { yields: root.output.clone() })?;
+        .ok_or_else(|| ValidateError::UnknownPageRecord {
+            yields: root.output.clone(),
+        })?;
     let field = |name: &str| page.fields.iter().find(|f| f.name == name);
     let expect = |name: &str, ty: FieldType| -> Result<(), ValidateError> {
         match field(name) {
@@ -154,8 +168,14 @@ mod tests {
         RecordDef {
             name: "Page".to_string(),
             fields: vec![
-                FieldDef { name: "id".into(), ty: FieldType::scalar("String") },
-                FieldDef { name: "title".into(), ty: FieldType::scalar("String") },
+                FieldDef {
+                    name: "id".into(),
+                    ty: FieldType::scalar("String"),
+                },
+                FieldDef {
+                    name: "title".into(),
+                    ty: FieldType::scalar("String"),
+                },
             ],
         }
     }
@@ -164,7 +184,10 @@ mod tests {
         crate::schema::RootEntry {
             def: RootDef {
                 name: ROUTE_ROOT.to_string(),
-                args: vec![FieldDef { name: "request".into(), ty: FieldType::value("Request") }],
+                args: vec![FieldDef {
+                    name: "request".into(),
+                    ty: FieldType::value("Request"),
+                }],
                 output: output.to_string(),
                 list: false,
             },
@@ -200,7 +223,10 @@ mod tests {
         assert_eq!(
             validate_route_contract(&wrong_arg).unwrap_err(),
             ValidateError::RouteRootArgs {
-                found: vec![FieldDef { name: "request".into(), ty: FieldType::scalar("String") }],
+                found: vec![FieldDef {
+                    name: "request".into(),
+                    ty: FieldType::scalar("String")
+                }],
             }
         );
 

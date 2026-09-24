@@ -48,7 +48,9 @@ impl<M: 'static> Inbox<M> {
                     None => None,
                 }
             };
-            let Some((bytes, apply, record)) = absorb else { break };
+            let Some((bytes, apply, record)) = absorb else {
+                break;
+            };
             if let Some(record) = record {
                 record(&bytes);
             }
@@ -175,7 +177,9 @@ mod tests {
         let seen = Rc::new(RefCell::new(Vec::<String>::new()));
         let absorbed = Rc::clone(&seen);
         inbox.set_absorber(Rc::new(move |_turn: &crate::signal::Turn, bytes: &[u8]| {
-            absorbed.borrow_mut().push(format!("absorb:{}", bytes.len()));
+            absorbed
+                .borrow_mut()
+                .push(format!("absorb:{}", bytes.len()));
         }));
         let sender = inbox.sender();
         sender.send(Msg::Inc);

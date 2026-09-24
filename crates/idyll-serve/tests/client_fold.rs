@@ -64,7 +64,12 @@ fn wire_template(template: &Template) -> serde_json::Value {
             TplNode::DangerouslyUnescapedHtml(markup) => {
                 json!({ "tag": "dangerously-unescaped-html", "val": markup })
             }
-            TplNode::Element { tag, attrs, slot, children } => json!({
+            TplNode::Element {
+                tag,
+                attrs,
+                slot,
+                children,
+            } => json!({
                 "tag": "element",
                 "val": {
                     "tag": tag,
@@ -76,7 +81,11 @@ fn wire_template(template: &Template) -> serde_json::Value {
                     "children": children,
                 },
             }),
-            TplNode::Live { name, key, fallback } => json!({
+            TplNode::Live {
+                name,
+                key,
+                fallback,
+            } => json!({
                 "tag": "live",
                 "val": { "name": name, "key": key, "fallback": fallback },
             }),
@@ -87,7 +96,10 @@ fn wire_template(template: &Template) -> serde_json::Value {
 
 fn wire_command(command: &DomCommand) -> serde_json::Value {
     match command {
-        DomCommand::ReplaceTemplate { template_id, template } => json!({
+        DomCommand::ReplaceTemplate {
+            template_id,
+            template,
+        } => json!({
             "tag": "replace-template",
             "val": {
                 "templateId": template_id.0,
@@ -109,26 +121,44 @@ fn wire_command(command: &DomCommand) -> serde_json::Value {
         DomCommand::SetText { node_id, text } => {
             json!({ "tag": "set-text", "val": { "node": node_id.0, "text": text } })
         }
-        DomCommand::SetAttr { node_id, name, value } => json!({
+        DomCommand::SetAttr {
+            node_id,
+            name,
+            value,
+        } => json!({
             "tag": "set-attr",
             "val": { "node": node_id.0, "name": name, "value": value },
         }),
-        DomCommand::SetStyleProp { node_id, name, value } => json!({
+        DomCommand::SetStyleProp {
+            node_id,
+            name,
+            value,
+        } => json!({
             "tag": "set-style-prop",
             "val": { "node": node_id.0, "name": name, "value": value },
         }),
         DomCommand::RemoveAttr { node_id, name } => {
             json!({ "tag": "remove-attr", "val": { "node": node_id.0, "name": name } })
         }
-        DomCommand::SetBoolAttr { node_id, name, value } => json!({
+        DomCommand::SetBoolAttr {
+            node_id,
+            name,
+            value,
+        } => json!({
             "tag": "set-bool-attr",
             "val": { "node": node_id.0, "name": name, "value": value },
         }),
-        DomCommand::MountFragment { anchor_id, template } => json!({
+        DomCommand::MountFragment {
+            anchor_id,
+            template,
+        } => json!({
             "tag": "mount-fragment",
             "val": { "anchor": anchor_id.0, "template": template.0 },
         }),
-        DomCommand::ReplaceFragment { anchor_id, template } => json!({
+        DomCommand::ReplaceFragment {
+            anchor_id,
+            template,
+        } => json!({
             "tag": "replace-fragment",
             "val": { "anchor": anchor_id.0, "template": template.0 },
         }),
@@ -141,27 +171,49 @@ fn wire_command(command: &DomCommand) -> serde_json::Value {
         DomCommand::AttachFragment { anchor_id } => {
             json!({ "tag": "attach-fragment", "val": anchor_id.0 })
         }
-        DomCommand::MoveFragment { anchor_id, after_anchor } => json!({
+        DomCommand::MoveFragment {
+            anchor_id,
+            after_anchor,
+        } => json!({
             "tag": "move-fragment",
             "val": { "anchor": anchor_id.0, "after": after_anchor.0 },
         }),
-        DomCommand::AddEventListener { node_id, event_type, handler_id } => json!({
+        DomCommand::AddEventListener {
+            node_id,
+            event_type,
+            handler_id,
+        } => json!({
             "tag": "add-event-listener",
             "val": { "node": node_id.0, "eventType": event_type, "handler": handler_id.0 },
         }),
-        DomCommand::RemoveEventListener { node_id, event_type, handler_id } => json!({
+        DomCommand::RemoveEventListener {
+            node_id,
+            event_type,
+            handler_id,
+        } => json!({
             "tag": "remove-event-listener",
             "val": { "node": node_id.0, "eventType": event_type, "handler": handler_id.0 },
         }),
-        DomCommand::WatchMeasure { node_id, handler_id } => json!({
+        DomCommand::WatchMeasure {
+            node_id,
+            handler_id,
+        } => json!({
             "tag": "watch-measure",
             "val": { "node": node_id.0, "handler": handler_id.0 },
         }),
-        DomCommand::UnwatchMeasure { node_id, handler_id } => json!({
+        DomCommand::UnwatchMeasure {
+            node_id,
+            handler_id,
+        } => json!({
             "tag": "unwatch-measure",
             "val": { "node": node_id.0, "handler": handler_id.0 },
         }),
-        DomCommand::Paint { node_id, layers, inks, deltas } => json!({
+        DomCommand::Paint {
+            node_id,
+            layers,
+            inks,
+            deltas,
+        } => json!({
             "tag": "paint",
             "val": {
                 "node": node_id.0,
@@ -175,11 +227,19 @@ fn wire_command(command: &DomCommand) -> serde_json::Value {
                     .collect::<Vec<_>>(),
             },
         }),
-        DomCommand::ServerRequest { request_id, op, args } => json!({
+        DomCommand::ServerRequest {
+            request_id,
+            op,
+            args,
+        } => json!({
             "tag": "server-request",
             "val": { "request": request_id.0, "msb": op.msb(), "lsb": op.lsb(), "args": args },
         }),
-        DomCommand::Navigate { request_id, op, path } => json!({
+        DomCommand::Navigate {
+            request_id,
+            op,
+            path,
+        } => json!({
             "tag": "navigate",
             "val": { "request": request_id.0, "msb": op.msb(), "lsb": op.lsb(), "path": path },
         }),
@@ -189,7 +249,10 @@ fn wire_command(command: &DomCommand) -> serde_json::Value {
         DomCommand::WatchSize { handler_id } => {
             json!({ "tag": "watch-size", "val": handler_id.0 })
         }
-        DomCommand::StartTicks { handler_id, interval_ms } => json!({
+        DomCommand::StartTicks {
+            handler_id,
+            interval_ms,
+        } => json!({
             "tag": "start-ticks",
             "val": { "handler": handler_id.0, "intervalMs": interval_ms },
         }),
@@ -290,7 +353,13 @@ async fn optional_attrs(ctx: Ctx<Setup, Flip>) -> idyll::Result {
         .await?;
     loop {
         let (Flip, turn) = ctx.recv().await?;
-        title.update(&turn, |t| *t = if t.is_some() { None } else { Some("back".to_string()) });
+        title.update(&turn, |t| {
+            *t = if t.is_some() {
+                None
+            } else {
+                Some("back".to_string())
+            }
+        });
         hidden.update(&turn, |h| *h = !*h);
     }
 }
@@ -391,7 +460,11 @@ async fn nested_drop(ctx: Ctx<Setup, Collapse>) -> idyll::Result {
 }
 
 fn npm() -> &'static str {
-    if cfg!(windows) { "npm.cmd" } else { "npm" }
+    if cfg!(windows) {
+        "npm.cmd"
+    } else {
+        "npm"
+    }
 }
 
 /// A live mounted and then driven by `messages`: the full stream, teardown included.
@@ -425,11 +498,27 @@ fn the_client_fold_converges_with_the_server_fold() {
     std::fs::create_dir_all(&fixtures).unwrap();
 
     for (name, commands, build_only) in [
-        ("todos", mount_stream::<Msg, _>(|ctx| todos(ctx, seeded_data())), false),
-        ("prose", mount_stream::<ProseMsg, _>(|ctx| prose(ctx, seeded_data())), false),
-        ("plot", mount_stream::<PlotMsg, _>(|ctx| plot(ctx, seeded_data())), false),
+        (
+            "todos",
+            mount_stream::<Msg, _>(|ctx| todos(ctx, seeded_data())),
+            false,
+        ),
+        (
+            "prose",
+            mount_stream::<ProseMsg, _>(|ctx| prose(ctx, seeded_data())),
+            false,
+        ),
+        (
+            "plot",
+            mount_stream::<PlotMsg, _>(|ctx| plot(ctx, seeded_data())),
+            false,
+        ),
         ("mixed-run", mount_stream::<Never, _>(mixed_run), false),
-        ("row-text-run", mount_stream::<Never, _>(row_text_run), false),
+        (
+            "row-text-run",
+            mount_stream::<Never, _>(row_text_run),
+            false,
+        ),
         // The driven stream: mount plus the teardown ops (detach, moves while
         // detached, re-attach) both folds must agree on — the region where every
         // divergence found by review has lived. Build-only: a post-interaction fold
@@ -458,13 +547,33 @@ fn the_client_fold_converges_with_the_server_fold() {
             ),
             true,
         ),
-        ("nested-rows", mount_stream::<NestedMsg, _>(nested_rows), false),
+        (
+            "nested-rows",
+            mount_stream::<NestedMsg, _>(nested_rows),
+            false,
+        ),
         ("text-rows", mount_stream::<Never, _>(text_rows), false),
         ("unescaped", mount_stream::<Never, _>(unescaped), false),
-        ("optional-attrs", mount_stream::<Flip, _>(optional_attrs), false),
-        ("optional-attrs-driven", driven_stream(optional_attrs, [Flip, Flip]), true),
-        ("optional-attrs-absent", driven_stream(optional_attrs, [Flip]), true),
-        ("empty-between", mount_stream::<Never, _>(empty_between), false),
+        (
+            "optional-attrs",
+            mount_stream::<Flip, _>(optional_attrs),
+            false,
+        ),
+        (
+            "optional-attrs-driven",
+            driven_stream(optional_attrs, [Flip, Flip]),
+            true,
+        ),
+        (
+            "optional-attrs-absent",
+            driven_stream(optional_attrs, [Flip]),
+            true,
+        ),
+        (
+            "empty-between",
+            mount_stream::<Never, _>(empty_between),
+            false,
+        ),
         ("hidden-kept", driven_stream(hidden_kept, [Hide]), false),
         ("nested-drop", driven_stream(nested_drop, [Collapse]), true),
     ] {

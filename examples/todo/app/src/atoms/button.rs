@@ -22,9 +22,11 @@ pub async fn Button(
     let variant = match kind {
         ButtonKind::Primary => styles::PRIMARY,
     };
-    Ok(ctx.render(live_view! {
-        button css=[styles::BASE, FOCUS, variant] onclick=(pressed) { (label) }
-    }).await?)
+    Ok(ctx
+        .render(live_view! {
+            button css=[styles::BASE, FOCUS, variant] onclick=(pressed) { (label) }
+        })
+        .await?)
 }
 
 #[styles]

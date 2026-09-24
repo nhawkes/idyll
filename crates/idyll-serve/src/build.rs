@@ -42,8 +42,14 @@ const RUNTIME_JS: &str = include_str!("../runtime/runtime.js");
 /// the staged filename the glue references.
 const SHIMS: [(&str, &str); 3] = [
     ("wasi-shim.js", include_str!("../runtime/wasi-shim.js")),
-    ("wasi-clock-monotonic.js", include_str!("../runtime/wasi-clock-monotonic.js")),
-    ("wasi-clock-wall.js", include_str!("../runtime/wasi-clock-wall.js")),
+    (
+        "wasi-clock-monotonic.js",
+        include_str!("../runtime/wasi-clock-monotonic.js"),
+    ),
+    (
+        "wasi-clock-wall.js",
+        include_str!("../runtime/wasi-clock-wall.js"),
+    ),
 ];
 
 /// The published client bundle: role → content-addressed filename. Serialized as
@@ -96,8 +102,7 @@ impl AssetManifest {
 
     fn store(&self, client_root: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self).expect("manifest serializes");
-        std::fs::write(client_root.join("manifest.json"), json)
-            .context("writing asset manifest")
+        std::fs::write(client_root.join("manifest.json"), json).context("writing asset manifest")
     }
 }
 
@@ -108,7 +113,10 @@ struct Asset {
 }
 
 fn asset(bytes: Vec<u8>, ext: &str) -> Asset {
-    Asset { name: format!("{:016x}.{ext}", fnv1a(&bytes)), bytes }
+    Asset {
+        name: format!("{:016x}.{ext}", fnv1a(&bytes)),
+        bytes,
+    }
 }
 
 /// Publish the bundle: write every asset (and, when `compress`, a `.br` sidecar for
@@ -151,10 +159,12 @@ fn publish(
 
     for entry in std::fs::read_dir(&dir)? {
         let path = entry?.path();
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
         if !keep.contains(name) {
-            std::fs::remove_file(&path)
-                .with_context(|| format!("sweeping stale asset {name}"))?;
+            std::fs::remove_file(&path).with_context(|| format!("sweeping stale asset {name}"))?;
         }
     }
     manifest.store(client_root)
@@ -187,22 +197,24 @@ struct StripDeadLogger {
 impl<'a> oxc_ast_visit::VisitMut<'a> for StripDeadLogger {
     fn visit_statements(&mut self, statements: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
         statements.retain(|statement| {
-            let drop = match statement {
-                Statement::ExpressionStatement(expression) => match &expression.expression {
-                    Expression::CallExpression(call) => match &call.callee {
-                        Expression::Identifier(name) => name.name == DEAD_LOGGER,
+            let drop =
+                match statement {
+                    Statement::ExpressionStatement(expression) => match &expression.expression {
+                        Expression::CallExpression(call) => match &call.callee {
+                            Expression::Identifier(name) => name.name == DEAD_LOGGER,
+                            _ => false,
+                        },
                         _ => false,
                     },
+                    Statement::VariableDeclaration(declaration) => declaration
+                        .declarations
+                        .iter()
+                        .any(|declarator| match &declarator.id {
+                            BindingPattern::BindingIdentifier(name) => name.name == DEAD_LOGGER,
+                            _ => false,
+                        }),
                     _ => false,
-                },
-                Statement::VariableDeclaration(declaration) => {
-                    declaration.declarations.iter().any(|declarator| match &declarator.id {
-                        BindingPattern::BindingIdentifier(name) => name.name == DEAD_LOGGER,
-                        _ => false,
-                    })
-                }
-                _ => false,
-            };
+                };
             if drop {
                 match statement {
                     Statement::ExpressionStatement(_) => self.calls += 1,
@@ -244,7 +256,11 @@ fn minify_glue(source: &str) -> Result<String> {
     let mut program = parsed.program;
     let exports_before = exported_names(&program);
 
-    let mut strip = StripDeadLogger { calls: 0, declarations: 0, survivors: 0 };
+    let mut strip = StripDeadLogger {
+        calls: 0,
+        declarations: 0,
+        survivors: 0,
+    };
     strip.visit_program(&mut program);
     if strip.declarations != 1 || strip.calls == 0 || strip.survivors != 0 {
         bail!(
@@ -325,7 +341,10 @@ fn cargo_metadata(from_dir: &Path) -> Result<serde_json::Value> {
         .output()
         .context("running `cargo metadata` (is cargo on PATH?)")?;
     if !out.status.success() {
-        bail!("cargo metadata failed: {}", String::from_utf8_lossy(&out.stderr));
+        bail!(
+            "cargo metadata failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     serde_json::from_slice(&out.stdout).context("parsing cargo metadata")
 }
@@ -418,15 +437,24 @@ impl AppBuild {
     pub fn build_component(&self, release: bool) -> Result<Vec<u8>> {
         let mut command = Command::new("cargo");
         command
-            .args(["build", "--locked", "-p", &self.app_crate, "--target", "wasm32-wasip2"])
+            .args([
+                "build",
+                "--locked",
+                "-p",
+                &self.app_crate,
+                "--target",
+                "wasm32-wasip2",
+            ])
             .current_dir(&self.app_manifest_dir);
         // The splitter's attribution input: `--emit-relocs` has wasm-ld keep the
         // linking and reloc.* sections in the core module. Appended so a caller's own
         // RUSTFLAGS survive; the encoded form wins over RUSTFLAGS when set, so whichever
         // one is live gets the flag.
         match std::env::var("CARGO_ENCODED_RUSTFLAGS") {
-            Ok(encoded) => command
-                .env("CARGO_ENCODED_RUSTFLAGS", format!("{encoded}\x1f-C\x1flink-arg=--emit-relocs")),
+            Ok(encoded) => command.env(
+                "CARGO_ENCODED_RUSTFLAGS",
+                format!("{encoded}\x1f-C\x1flink-arg=--emit-relocs"),
+            ),
             Err(_) => {
                 let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
                 command.env("RUSTFLAGS", format!("{flags} -C link-arg=--emit-relocs"))
@@ -475,7 +503,12 @@ impl AppBuild {
     /// its own), and publish the hashed set into `assets/` with the manifest. The
     /// served bundle is self-contained — no bundler, no npm at runtime — and every
     /// WASI import is mapped onto the embedded shim modules.
-    pub fn build_client(&self, wasm: &[u8], compress: bool, live: &[String]) -> Result<AssetManifest> {
+    pub fn build_client(
+        &self,
+        wasm: &[u8],
+        compress: bool,
+        live: &[String],
+    ) -> Result<AssetManifest> {
         let stage = self.client_root.join("stage");
         std::fs::create_dir_all(&stage)
             .with_context(|| format!("creating stage dir {}", stage.display()))?;
@@ -525,7 +558,11 @@ impl AppBuild {
         let mut cores = Vec::new();
         for entry in std::fs::read_dir(&stage)? {
             let path = entry?.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
             if name.starts_with("app.core") && name.ends_with(".wasm") {
                 cores.push((name, std::fs::read(&path)?));
             }
@@ -611,9 +648,11 @@ fn cached_release(client_root: &Path, stamp: &str) -> Option<AssetManifest> {
     }
     let manifest = AssetManifest::load(client_root).ok()?;
     let assets = client_root.join("assets");
-    manifest.files().iter().all(|file| {
-        assets.join(file).is_file() && assets.join(format!("{file}.br")).is_file()
-    }).then_some(manifest)
+    manifest
+        .files()
+        .iter()
+        .all(|file| assets.join(file).is_file() && assets.join(format!("{file}.br")).is_file())
+        .then_some(manifest)
 }
 
 /// Repoint every `./{from}` reference in the glue at `./{to}`; false if none existed.
@@ -673,12 +712,20 @@ mod tests {
                 js: file.name.clone(),
                 wasm: Vec::new(),
                 shims: Vec::new(),
-                chunks: crate::chunks::ChunkManifest { live: Default::default() },
+                chunks: crate::chunks::ChunkManifest {
+                    live: Default::default(),
+                },
             },
         };
         let stamp = client_stamp(b"release component");
         let stamp_path = root.join(".idyll-stamp");
-        publish(&root, &manifest(&release), std::slice::from_ref(&release), true).unwrap();
+        publish(
+            &root,
+            &manifest(&release),
+            std::slice::from_ref(&release),
+            true,
+        )
+        .unwrap();
         std::fs::write(&stamp_path, &stamp).unwrap();
         assert!(cached_release(&root, &stamp).is_some());
 
@@ -688,7 +735,13 @@ mod tests {
         std::fs::write(&stamp_path, &stamp).unwrap();
         assert!(cached_release(&root, &stamp).is_none());
 
-        publish(&root, &manifest(&release), std::slice::from_ref(&release), true).unwrap();
+        publish(
+            &root,
+            &manifest(&release),
+            std::slice::from_ref(&release),
+            true,
+        )
+        .unwrap();
         std::fs::write(&stamp_path, &stamp).unwrap();
         let cached = cached_release(&root, &stamp).unwrap();
         assert_eq!(cached.runtime, release.name);

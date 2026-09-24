@@ -69,13 +69,13 @@ use axum::{
     Router,
 };
 use idyll_host::{MembraneEngine, MountOutcome};
+use idyll_route::Route as _;
 use tokio::sync::broadcast;
 use tokio_stream::{
     wrappers::{BroadcastStream, UnboundedReceiverStream},
     StreamExt,
 };
 use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
-use idyll_route::Route as _;
 
 pub use build::{AppAssets, AppBuild, AssetManifest};
 
@@ -207,7 +207,10 @@ fn app_engine(membrane: MembraneEngine) -> anyhow::Result<AppEngine> {
         "the app component declares no `page` — the route view is the root component \
          (`guest! {{ page: …, … }}`); found: {names:?}"
     );
-    Ok(AppEngine { has_head: names.iter().any(|name| name == "head"), membrane })
+    Ok(AppEngine {
+        has_head: names.iter().any(|name| name == "head"),
+        membrane,
+    })
 }
 
 /// Shared server state behind the axum handlers.
@@ -364,7 +367,9 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
                 .context("manifest_dir has no parent for the default schema path")?
                 .join("schema.json"),
         };
-        let schema_json = schema.to_json().map_err(|problem| anyhow::anyhow!(problem))?;
+        let schema_json = schema
+            .to_json()
+            .map_err(|problem| anyhow::anyhow!(problem))?;
         if std::fs::read_to_string(&schema_file).ok().as_deref() != Some(schema_json.as_str()) {
             anyhow::ensure!(publishing, "{}", stale(&schema_file.display().to_string()));
             std::fs::write(&schema_file, &schema_json)
@@ -372,7 +377,9 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             println!(
                 "schema published: {} ({})",
                 schema_file.display(),
-                schema.content_hash().map_err(|problem| anyhow::anyhow!(problem))?
+                schema
+                    .content_hash()
+                    .map_err(|problem| anyhow::anyhow!(problem))?
             );
         }
 
@@ -395,7 +402,10 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             .with_context(|| format!("reading registry dir {}", registry_dir.display()))?;
         for entry in listing {
             let entry = entry?.path();
-            let name = entry.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = entry
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
             if (name.ends_with(".query") || name.ends_with(".mutation")) && !current.contains(name)
             {
                 anyhow::ensure!(publishing, "{}", stale(&format!("ops/{name}")));
@@ -423,7 +433,10 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             let mut ops = HashMap::new();
             let op = idyll_data::CanonOp::from_canonical_json(&self.route_query.contents)
                 .with_context(|| {
-                    format!("route operation {} does not parse", self.route_query.filename)
+                    format!(
+                        "route operation {} does not parse",
+                        self.route_query.filename
+                    )
                 })?;
             idyll_data::validate(&schema, &op).map_err(|err| {
                 anyhow::anyhow!(
@@ -447,7 +460,9 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             let mut mutations = HashMap::new();
             for file in &self.mutations {
                 let mutation = idyll_data::CanonMutation::from_canonical_json(&file.contents)
-                    .with_context(|| format!("persisted mutation {} does not parse", file.filename))?;
+                    .with_context(|| {
+                        format!("persisted mutation {} does not parse", file.filename)
+                    })?;
                 idyll_data::validate_mutation(&schema, &mutation).map_err(|err| {
                     anyhow::anyhow!(
                         "persisted mutation {} does not typecheck against the schema: {err}",
@@ -467,7 +482,12 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
                 }
                 println!("persisted mutation accepted: {hash}");
             }
-            Executor { schema, resolvers, ops, mutations }
+            Executor {
+                schema,
+                resolvers,
+                ops,
+                mutations,
+            }
         };
 
         let (reload_tx, _) = broadcast::channel(16);
@@ -482,15 +502,18 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             Mode::Dev | Mode::Build => {
                 let roots = idyll_styles::extract::source_roots(&self.manifest_dir)
                     .context("locating the workspace's style sources")?;
-                let table = idyll_styles::extract::extract(&roots)
-                    .context("extracting the style table")?;
+                let table =
+                    idyll_styles::extract::extract(&roots).context("extracting the style table")?;
                 let universe = idyll_styles::extract::universe(&roots, &self.app_crate)
                     .context("closing the live universe")?;
                 (roots, Arc::new(RwLock::new(Styles { table, universe })))
             }
             Mode::Prod => (
                 Vec::new(),
-                Arc::new(RwLock::new(Styles { table: Default::default(), universe: Default::default() })),
+                Arc::new(RwLock::new(Styles {
+                    table: Default::default(),
+                    universe: Default::default(),
+                })),
             ),
         };
 
@@ -577,12 +600,25 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             dev,
             not_found: self.not_found,
         });
-        Ok(Some(Prepared { state, client_dir, assets: self.assets, dev, port: self.port }))
+        Ok(Some(Prepared {
+            state,
+            client_dir,
+            assets: self.assets,
+            dev,
+            port: self.port,
+        }))
     }
 
     /// Build the app and serve it over HTTP. `Mode::Build` builds the bundle and returns.
     pub async fn serve(self) -> anyhow::Result<()> {
-        let Some(Prepared { state, client_dir, assets, dev, port }) = self.prepare().await? else {
+        let Some(Prepared {
+            state,
+            client_dir,
+            assets,
+            dev,
+            port,
+        }) = self.prepare().await?
+        else {
             return Ok(());
         };
         let assets_route = state.assets_route.clone();
@@ -609,11 +645,18 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
             app = app.nest_service("/static", ServeDir::new(assets));
         }
         let app = app.with_state(state);
-        let app = if dev { app } else { app.layer(tower_http::compression::CompressionLayer::new()) };
+        let app = if dev {
+            app
+        } else {
+            app.layer(tower_http::compression::CompressionLayer::new())
+        };
 
         let addr = format!("0.0.0.0:{port}");
         let listener = tokio::net::TcpListener::bind(&addr).await?;
-        println!("idyll {} server on http://{addr}", if dev { "dev" } else { "prod" });
+        println!(
+            "idyll {} server on http://{addr}",
+            if dev { "dev" } else { "prod" }
+        );
         axum::serve(listener, app).await?;
         Ok(())
     }
@@ -648,11 +691,20 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
     /// index. The result is a self-contained folder any static host serves — no running idyll.
     pub async fn prerender(self, out: &std::path::Path, standalone: bool) -> anyhow::Result<()> {
         if out.exists() {
-            anyhow::ensure!(std::fs::read_dir(out)?.next().is_none(), "prerender output must be empty: {}", out.display());
+            anyhow::ensure!(
+                std::fs::read_dir(out)?.next().is_none(),
+                "prerender output must be empty: {}",
+                out.display()
+            );
         }
         let routes = self.data.routes().await;
         let destinations = prerender_destinations(&routes)?;
-        let Prepared { state, client_dir, assets, .. } = self
+        let Prepared {
+            state,
+            client_dir,
+            assets,
+            ..
+        } = self
             .prepare()
             .await?
             .context("prerender needs a servable mode, not `Mode::Build`")?;
@@ -664,7 +716,11 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
         // ride at the same paths the HTML references: the content-addressed bundle under the
         // assets route, the app's `/static` (fonts, favicon) alongside.
         let embed = if standalone {
-            Some(build_embed(&client_dir, &state.assets_route, assets.as_deref())?)
+            Some(build_embed(
+                &client_dir,
+                &state.assets_route,
+                assets.as_deref(),
+            )?)
         } else {
             copy_tree(&client_dir, &out.join(&assets_route))?;
             if let Some(static_dir) = &assets {
@@ -698,10 +754,14 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
             let bytes = axum::body::to_bytes(body, usize::MAX)
                 .await
                 .with_context(|| format!("collecting {url}"))?;
-            let mut html = String::from_utf8(bytes.to_vec()).with_context(|| format!("{url} is not UTF-8"))?;
+            let mut html =
+                String::from_utf8(bytes.to_vec()).with_context(|| format!("{url} is not UTF-8"))?;
             let faults = faults.lock().expect("render faults lock poisoned");
             anyhow::ensure!(faults.is_empty(), "prerender {url}: {}", faults.join("; "));
-            anyhow::ensure!(html.ends_with("</body></html>"), "prerender {url}: incomplete document");
+            anyhow::ensure!(
+                html.ends_with("</body></html>"),
+                "prerender {url}: incomplete document"
+            );
             if let Some(embed) = &embed {
                 html = embed.inline(html);
             }
@@ -711,7 +771,10 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
             }
             std::fs::write(&dest, html.as_bytes())?;
             if !standalone {
-                std::fs::write(dest.with_extension("html.br"), build::brotli_bytes(html.as_bytes()))?;
+                std::fs::write(
+                    dest.with_extension("html.br"),
+                    build::brotli_bytes(html.as_bytes()),
+                )?;
             }
             pages.push((url.into_string(), file.to_string_lossy().into_owned()));
         }
@@ -720,22 +783,39 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
         // for a path they have no file for; the page is not a route of the site, so it
         // stays out of the manifest.
         if let Some(url) = &state.not_found {
-            let body = render_not_found(&state).await.map_err(|why| anyhow::anyhow!("prerender {url}: {why}"))?;
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.with_context(|| format!("collecting {url}"))?;
-            let mut html = String::from_utf8(bytes.to_vec()).with_context(|| format!("{url} is not UTF-8"))?;
-            anyhow::ensure!(html.ends_with("</body></html>"), "prerender {url}: incomplete document");
+            let body = render_not_found(&state)
+                .await
+                .map_err(|why| anyhow::anyhow!("prerender {url}: {why}"))?;
+            let bytes = axum::body::to_bytes(body, usize::MAX)
+                .await
+                .with_context(|| format!("collecting {url}"))?;
+            let mut html =
+                String::from_utf8(bytes.to_vec()).with_context(|| format!("{url} is not UTF-8"))?;
+            anyhow::ensure!(
+                html.ends_with("</body></html>"),
+                "prerender {url}: incomplete document"
+            );
             if let Some(embed) = &embed {
                 html = embed.inline(html);
             }
             std::fs::write(out.join("404.html"), html.as_bytes())?;
             if !standalone {
-                std::fs::write(out.join("404.html.br"), build::brotli_bytes(html.as_bytes()))?;
+                std::fs::write(
+                    out.join("404.html.br"),
+                    build::brotli_bytes(html.as_bytes()),
+                )?;
             }
         }
 
         let manifest = pages
             .iter()
-            .map(|(url, file)| format!("  {{ \"url\": {}, \"file\": {} }}", json_str(url), json_str(file)))
+            .map(|(url, file)| {
+                format!(
+                    "  {{ \"url\": {}, \"file\": {} }}",
+                    json_str(url),
+                    json_str(file)
+                )
+            })
             .collect::<Vec<_>>()
             .join(",\n");
         std::fs::write(out.join("manifest.json"), format!("[\n{manifest}\n]\n"))?;
@@ -747,24 +827,30 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
 fn prerender_destinations<R: idyll_route::Route>(routes: &[R]) -> anyhow::Result<Vec<PathBuf>> {
     anyhow::ensure!(!routes.is_empty(), "prerender route set is empty");
     let mut destinations = HashSet::new();
-    routes.iter().map(|route| {
-        let url = route.url();
-        for segment in idyll_route::split_path(url.as_str()) {
-            let decoded = idyll_route::decode_segment(segment).context("route is not UTF-8")?;
+    routes
+        .iter()
+        .map(|route| {
+            let url = route.url();
+            for segment in idyll_route::split_path(url.as_str()) {
+                let decoded = idyll_route::decode_segment(segment).context("route is not UTF-8")?;
+                anyhow::ensure!(
+                    !decoded.is_empty()
+                        && decoded != "."
+                        && decoded != ".."
+                        && !decoded.contains(['/', '\\', ':', '\0'])
+                        && !decoded.ends_with(['.', ' ']),
+                    "route cannot be represented as a file: {url}"
+                );
+            }
+            let file = url_to_file(url.as_str());
             anyhow::ensure!(
-                !decoded.is_empty() && decoded != "." && decoded != ".."
-                    && !decoded.contains(['/', '\\', ':', '\0'])
-                    && !decoded.ends_with(['.', ' ']),
-                "route cannot be represented as a file: {url}"
+                destinations.insert(file.to_string_lossy().to_lowercase()),
+                "duplicate prerender destination: {}",
+                file.display()
             );
-        }
-        let file = url_to_file(url.as_str());
-        anyhow::ensure!(
-            destinations.insert(file.to_string_lossy().to_lowercase()),
-            "duplicate prerender destination: {}", file.display()
-        );
-        Ok(file)
-    }).collect()
+            Ok(file)
+        })
+        .collect()
 }
 
 /// Map a URL path to its output file: `/` → `index.html`, `/docs/a/b` → `docs/a/b.html`.
@@ -837,7 +923,10 @@ impl Embed {
 
 fn data_url(mime: &str, bytes: &[u8]) -> String {
     use base64::Engine as _;
-    format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))
+    format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 fn asset_mime(path: &str) -> &'static str {
@@ -868,7 +957,10 @@ fn build_embed(
         if !entry.file_type()?.is_file() || name.ends_with(".br") {
             continue;
         }
-        raw.insert(format!("{assets_route}/{name}"), std::fs::read(entry.path())?);
+        raw.insert(
+            format!("{assets_route}/{name}"),
+            std::fs::read(entry.path())?,
+        );
     }
     if let Some(dir) = static_dir {
         collect_tree(dir, "/static", &mut raw)?;
@@ -897,14 +989,24 @@ fn build_embed(
     while !pending.is_empty() {
         let ready: Vec<String> = pending
             .iter()
-            .filter(|p| js_module_deps(&raw[*p], assets_route).iter().all(|d| !pending.contains(d)))
+            .filter(|p| {
+                js_module_deps(&raw[*p], assets_route)
+                    .iter()
+                    .all(|d| !pending.contains(d))
+            })
             .cloned()
             .collect();
-        anyhow::ensure!(!ready.is_empty(), "unresolved or cyclic JS imports in the bundle");
+        anyhow::ensure!(
+            !ready.is_empty(),
+            "unresolved or cyclic JS imports in the bundle"
+        );
         for path in ready {
             let src = String::from_utf8_lossy(&raw[&path]).into_owned();
             let rewritten = rewrite_js_refs(&src, assets_route, &data_urls);
-            data_urls.insert(path.clone(), data_url("text/javascript", rewritten.as_bytes()));
+            data_urls.insert(
+                path.clone(),
+                data_url("text/javascript", rewritten.as_bytes()),
+            );
             pending.remove(&path);
         }
     }
@@ -941,7 +1043,10 @@ fn rewrite_js_refs(
         if path.ends_with(".js") {
             out = out.replace(&format!("'./{name}'"), &format!("'{data}'"));
         } else if path.ends_with(".wasm") {
-            out = out.replace(&format!("new URL('./{name}', import.meta.url)"), &format!("'{data}'"));
+            out = out.replace(
+                &format!("new URL('./{name}', import.meta.url)"),
+                &format!("'{data}'"),
+            );
         }
     }
     out
@@ -983,16 +1088,23 @@ async fn render_path<Src: Clone + Send + Sync + 'static>(
     faults: Option<Arc<std::sync::Mutex<Vec<String>>>>,
 ) -> Result<axum::body::Body, RenderError> {
     let vars = serde_json::json!({ "request": { "path": path } });
-    let executed = match state.executor.execute(&state.data, state.route_hash, &vars).await {
+    let executed = match state
+        .executor
+        .execute(&state.data, state.route_hash, &vars)
+        .await
+    {
         Some(Ok(executed)) => executed,
         // The route resolver said `None`: content that isn't there — the typed 404.
         Some(Err(idyll_data::ExecError::Absent { .. })) => return Err(RenderError::NoRoute),
         Some(Err(err)) => return Err(RenderError::Fault(format!("route query failed: {err}"))),
-        None => return Err(RenderError::Fault("route operation missing from executor".into())),
+        None => {
+            return Err(RenderError::Fault(
+                "route operation missing from executor".into(),
+            ))
+        }
     };
-    let title =
-        idyll_data::page_title(&executed, &state.page, path)
-            .map_err(|err| RenderError::Fault(err.to_string()))?;
+    let title = idyll_data::page_title(&executed, &state.page, path)
+        .map_err(|err| RenderError::Fault(err.to_string()))?;
 
     let sheet = {
         let styles = state.styles.read().expect("style table lock poisoned");
@@ -1063,8 +1175,9 @@ async fn render_path<Src: Clone + Send + Sync + 'static>(
                 return;
             }
         };
-        let has_islands =
-            page.iter().any(|s| matches!(s, idyll::BodySegment::Live { .. }));
+        let has_islands = page
+            .iter()
+            .any(|s| matches!(s, idyll::BodySegment::Live { .. }));
 
         // Past here the response is committed, so every remaining fault bounds its
         // damage to its own live region (see `MountStream::mount`).
@@ -1075,7 +1188,15 @@ async fn render_path<Src: Clone + Send + Sync + 'static>(
         let (prelude, chunks_json) = {
             let manifest = manifest.read().expect("manifest lock poisoned");
             (
-                document_prelude(&title, &head, &sheet, &manifest, &assets_route, dev, has_islands),
+                document_prelude(
+                    &title,
+                    &head,
+                    &sheet,
+                    &manifest,
+                    &assets_route,
+                    dev,
+                    has_islands,
+                ),
                 chunks_script(&manifest.app.chunks, &assets_route),
             )
         };
@@ -1089,22 +1210,35 @@ async fn render_path<Src: Clone + Send + Sync + 'static>(
                         return;
                     }
                 }
-                idyll::BodySegment::Live { name, key, fallback, .. } => {
+                idyll::BodySegment::Live {
+                    name,
+                    key,
+                    fallback,
+                    ..
+                } => {
                     if !stream.mount(&name, key.as_deref(), &fallback, 1) {
                         return;
                     }
                 }
             }
         }
-        send(document_tail(has_islands.then_some((seed.as_slice(), insecure_seed, chunks_json.as_str()))));
+        send(document_tail(has_islands.then_some((
+            seed.as_slice(),
+            insecure_seed,
+            chunks_json.as_str(),
+        ))));
     });
 
     match status_rx.await {
-        Ok(Ok(())) => Ok(axum::body::Body::from_stream(UnboundedReceiverStream::new(rx))),
+        Ok(Ok(())) => Ok(axum::body::Body::from_stream(UnboundedReceiverStream::new(
+            rx,
+        ))),
         Ok(Err(reason)) => Err(RenderError::Fault(reason)),
         // The task ended without answering: it panicked, which `spawn_blocking`
         // swallows into a JoinError we never see here.
-        Err(_) => Err(RenderError::Fault("the render task ended without painting".into())),
+        Err(_) => Err(RenderError::Fault(
+            "the render task ended without painting".into(),
+        )),
     }
 }
 
@@ -1174,7 +1308,10 @@ impl MountStream<'_> {
             Ok(painted) => painted,
             Err(reason) => {
                 if let Some(faults) = &self.faults {
-                    faults.lock().expect("render faults lock poisoned").push(reason.clone());
+                    faults
+                        .lock()
+                        .expect("render faults lock poisoned")
+                        .push(reason.clone());
                 }
                 eprintln!("{reason} — shipping the region's fallback");
                 return (self.send)(idyll::live_wrapper_open(name, key, false))
@@ -1192,7 +1329,12 @@ impl MountStream<'_> {
                         return false;
                     }
                 }
-                idyll::BodySegment::Live { name: child, key: child_key, fallback, .. } => {
+                idyll::BodySegment::Live {
+                    name: child,
+                    key: child_key,
+                    fallback,
+                    ..
+                } => {
                     if !self.mount(&child, child_key.as_deref(), &fallback, depth + 1) {
                         return false;
                     }
@@ -1217,10 +1359,14 @@ impl MountStream<'_> {
                 idyll::BodySegment::Html(chunk) => html.push_str(chunk.as_str()),
                 idyll::BodySegment::Live { name: child, .. } => {
                     if let Some(faults) = &self.faults {
-                        faults.lock().expect("render faults lock poisoned")
+                        faults
+                            .lock()
+                            .expect("render faults lock poisoned")
                             .push(format!("`{name}` declares live `{child}` in head content"));
                     }
-                    eprintln!("`{name}` declares live `{child}` — head content cannot splice mounts");
+                    eprintln!(
+                        "`{name}` declares live `{child}` — head content cannot splice mounts"
+                    );
                 }
             }
         }
@@ -1247,8 +1393,18 @@ impl MountStream<'_> {
         if depth >= 8 {
             return Err(format!("mount `{name}`#{instance} nests deeper than 8"));
         }
-        match self.engine.mount(name, instance, key, self.seed, self.insecure_seed, self.budget) {
-            Ok(MountOutcome::Commands { commands, static_paint }) => Ok((commands, static_paint)),
+        match self.engine.mount(
+            name,
+            instance,
+            key,
+            self.seed,
+            self.insecure_seed,
+            self.budget,
+        ) {
+            Ok(MountOutcome::Commands {
+                commands,
+                static_paint,
+            }) => Ok((commands, static_paint)),
             Ok(MountOutcome::BlewBudget) => {
                 Err(format!("mount `{name}`#{instance} blew its SSR budget"))
             }
@@ -1273,7 +1429,12 @@ fn document_sheet(styles: &Styles) -> String {
         // free-form value, a font stack, is a CSS string where `<\/` reads back
         // identically) — the escape only guards the inline `<style>` element from an
         // early close.
-        sheet.push_str(&rule.css.expect("route_rules resolves every rule").replace("</", "<\\/"));
+        sheet.push_str(
+            &rule
+                .css
+                .expect("route_rules resolves every rule")
+                .replace("</", "<\\/"),
+        );
         sheet.push('\n');
     }
     sheet
@@ -1313,8 +1474,9 @@ fn route_rules(styles: &Styles) -> Vec<idyll::StyleRule> {
 /// live (its `DELEGATED` list in `runtime.js`; a test pins the two equal). The
 /// prelude's capture snippet listens for exactly this set so input landing between
 /// first paint and the runtime module executing is queued, not dropped.
-const DELEGATED_EVENTS: &[&str] =
-    &["click", "input", "change", "keydown", "keyup", "submit", "blur", "focus"];
+const DELEGATED_EVENTS: &[&str] = &[
+    "click", "input", "change", "keydown", "keyup", "submit", "blur", "focus",
+];
 
 /// The inline early-capture snippet: queue `(target, type, value, key)` records into
 /// `window.__IDYLL_Q` from first paint; the runtime adopts the queue at import and
@@ -1396,9 +1558,18 @@ fn document_prelude(
     // The live pages' load plan: everything the mounts need, hinted up front.
     let app = &manifest.app;
     let mut hints = format!("<link rel=\"modulepreload\" href=\"{runtime_url}\">");
-    write!(hints, "<link rel=\"modulepreload\" href=\"{assets_route}/{}\">", app.js).unwrap();
+    write!(
+        hints,
+        "<link rel=\"modulepreload\" href=\"{assets_route}/{}\">",
+        app.js
+    )
+    .unwrap();
     for shim in &app.shims {
-        write!(hints, "<link rel=\"modulepreload\" href=\"{assets_route}/{shim}\">").unwrap();
+        write!(
+            hints,
+            "<link rel=\"modulepreload\" href=\"{assets_route}/{shim}\">"
+        )
+        .unwrap();
     }
     for wasm in &app.wasm {
         // `crossorigin` matches the glue's plain same-origin `fetch()` credentials
@@ -1467,7 +1638,10 @@ fn chunks_script(chunks: &chunks::ChunkManifest, assets_route: &str) -> String {
         .map(|(name, files)| {
             (
                 name.as_str(),
-                files.iter().map(|f| format!("{assets_route}/{f}")).collect(),
+                files
+                    .iter()
+                    .map(|f| format!("{assets_route}/{f}"))
+                    .collect(),
             )
         })
         .collect();
@@ -1480,10 +1654,15 @@ fn chunks_script(chunks: &chunks::ChunkManifest, assets_route: &str) -> String {
 async fn render_not_found<Src: Clone + Send + Sync + 'static>(
     state: &AppState<Src>,
 ) -> Result<axum::body::Body, String> {
-    let url = state.not_found.as_deref().ok_or_else(|| "no not-found page".to_string())?;
+    let url = state
+        .not_found
+        .as_deref()
+        .ok_or_else(|| "no not-found page".to_string())?;
     match render_path(state, url, None).await {
         Ok(body) => Ok(body),
-        Err(RenderError::NoRoute) => Err(format!("the route query resolves nothing for the not-found page {url}")),
+        Err(RenderError::NoRoute) => Err(format!(
+            "the route query resolves nothing for the not-found page {url}"
+        )),
         Err(RenderError::Fault(message)) => Err(message),
     }
 }
@@ -1504,10 +1683,12 @@ async fn page_endpoint<Src: Clone + Send + Sync + 'static>(
     };
     match render_path(&state, uri.path(), None).await {
         Ok(body) => document(StatusCode::OK, body),
-        Err(RenderError::NoRoute) if state.not_found.is_some() => match render_not_found(&state).await {
-            Ok(body) => document(StatusCode::NOT_FOUND, body),
-            Err(message) => fault("render", message, state.dev),
-        },
+        Err(RenderError::NoRoute) if state.not_found.is_some() => {
+            match render_not_found(&state).await {
+                Ok(body) => document(StatusCode::NOT_FOUND, body),
+                Err(message) => fault("render", message, state.dev),
+            }
+        }
         Err(RenderError::NoRoute) => (StatusCode::NOT_FOUND, "no such page").into_response(),
         Err(RenderError::Fault(message)) => fault("render", message, state.dev),
     }
@@ -1548,9 +1729,11 @@ async fn operation_endpoint<Src: Clone + Send + Sync + 'static>(
             let payload = executed.to_preloaded_json();
             ([(header::CONTENT_TYPE, "application/json")], payload).into_response()
         }
-        Some(Err(idyll_data::ExecError::Absent { root })) => {
-            (StatusCode::NOT_FOUND, format!("no `{root}` for these variables")).into_response()
-        }
+        Some(Err(idyll_data::ExecError::Absent { root })) => (
+            StatusCode::NOT_FOUND,
+            format!("no `{root}` for these variables"),
+        )
+            .into_response(),
         Some(Err(err)) => fault("operation", err, state.dev),
     }
 }
@@ -1601,7 +1784,11 @@ async fn mutation_endpoint<Src: Clone + Send + Sync + 'static>(
         None => serde_json::Value::Null,
         Some(path) => {
             let vars = serde_json::json!({ "request": { "path": path } });
-            match state.executor.execute(&state.data, state.route_hash, &vars).await {
+            match state
+                .executor
+                .execute(&state.data, state.route_hash, &vars)
+                .await
+            {
                 Some(Ok(executed)) => serde_json::from_slice(&executed.to_preloaded_json())
                     .expect("preloaded json parses"),
                 _ => serde_json::Value::Null,
@@ -1643,7 +1830,10 @@ async fn styles_endpoint<Src: Clone + Send + Sync + 'static>(
         let styles = state.styles.read().expect("style table lock poisoned");
         route_rules(&styles)
     };
-    ([(header::CONTENT_TYPE, "application/json")], serde_json::to_vec(&rules).expect("rules serialize"))
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        serde_json::to_vec(&rules).expect("rules serialize"),
+    )
         .into_response()
 }
 
@@ -1716,7 +1906,10 @@ fn prod_styles(
         Ok(bytes) => {
             let artifact: StylesArtifact = serde_json::from_slice(&bytes)
                 .with_context(|| format!("parsing style artifact {}", path.display()))?;
-            Ok(Styles { table: artifact.rules, universe: artifact.universe })
+            Ok(Styles {
+                table: artifact.rules,
+                universe: artifact.universe,
+            })
         }
         Err(_) => {
             eprintln!(
@@ -1800,7 +1993,9 @@ fn spawn_watcher(
                 Ok(fresh) => {
                     let changed = {
                         let mut styles = styles.write().expect("style table lock poisoned");
-                        (styles.table != fresh).then(|| styles.table = fresh).is_some()
+                        (styles.table != fresh)
+                            .then(|| styles.table = fresh)
+                            .is_some()
                     };
                     if changed {
                         let _ = reload.send(Rebuild::Styles);
@@ -1808,7 +2003,9 @@ fn spawn_watcher(
                     }
                 }
                 // Mid-edit sources often don't parse; keep the last good table.
-                Err(err) => eprintln!("style extraction failed (keeping the previous table): {err:#}"),
+                Err(err) => {
+                    eprintln!("style extraction failed (keeping the previous table): {err:#}")
+                }
             }
 
             // Full track: only the app crate compiles into the wasm.
@@ -1859,9 +2056,7 @@ fn spawn_watcher(
                         let changed: Vec<String> = new
                             .live
                             .keys()
-                            .filter(|name| {
-                                new.live.get(*name) != old.app.chunks.live.get(*name)
-                            })
+                            .filter(|name| new.live.get(*name) != old.app.chunks.live.get(*name))
                             .cloned()
                             .collect();
                         let document_changed =
@@ -1921,19 +2116,34 @@ mod tests {
         assert!(prerender_destinations::<Route>(&[]).is_err());
         assert!(prerender_destinations(&[Route::Index, doc("index")]).is_err());
         assert!(prerender_destinations(&[doc("intro"), doc("INTRO")]).is_err());
-        for slug in ["..", ".", "../outside", "a/b", "a\\b", "c:drive", "trailing."] {
+        for slug in [
+            "..",
+            ".",
+            "../outside",
+            "a/b",
+            "a\\b",
+            "c:drive",
+            "trailing.",
+        ] {
             assert!(prerender_destinations(&[doc(slug)]).is_err(), "{slug}");
         }
-        assert_eq!(prerender_destinations(&[Route::Index, doc("intro")]).unwrap(),
-            [PathBuf::from("index.html"), PathBuf::from("intro.html")]);
+        assert_eq!(
+            prerender_destinations(&[Route::Index, doc("intro")]).unwrap(),
+            [PathBuf::from("index.html"), PathBuf::from("intro.html")]
+        );
     }
 
     #[test]
     fn a_failed_nested_mount_is_reported_to_prerender() {
-        let engine = MembraneEngine::new(include_bytes!("../../idyll-host/tests/fixtures/guest.wasm")).unwrap();
+        let engine =
+            MembraneEngine::new(include_bytes!("../../idyll-host/tests/fixtures/guest.wasm"))
+                .unwrap();
         let faults = Arc::new(std::sync::Mutex::new(Vec::new()));
         let output = std::cell::RefCell::new(String::new());
-        let send = |html: String| { output.borrow_mut().push_str(&html); true };
+        let send = |html: String| {
+            output.borrow_mut().push_str(&html);
+            true
+        };
         let mut stream = MountStream {
             send: &send,
             engine: &engine,
@@ -1957,8 +2167,7 @@ mod tests {
                 wasm: vec!["0000000000000003.wasm".into()],
                 shims: vec!["0000000000000004.js".into()],
                 chunks: chunks::ChunkManifest {
-                    live: [("board".to_string(), vec!["0000000000000005.wasm".into()])]
-                        .into(),
+                    live: [("board".to_string(), vec!["0000000000000005.wasm".into()])].into(),
                 },
             },
         }
@@ -1999,9 +2208,15 @@ mod tests {
             "<script type=\"module\" src=\"/__idyll__/0000000000000001.js\" \
              data-app=\"/__idyll__/0000000000000002.js\">"
         ));
-        assert!(html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000001.js\">"));
-        assert!(html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000002.js\">"));
-        assert!(html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000004.js\">"));
+        assert!(
+            html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000001.js\">")
+        );
+        assert!(
+            html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000002.js\">")
+        );
+        assert!(
+            html.contains("<link rel=\"modulepreload\" href=\"/__idyll__/0000000000000004.js\">")
+        );
         assert!(html.contains(
             "<link rel=\"preload\" as=\"fetch\" type=\"application/wasm\" \
              href=\"/__idyll__/0000000000000003.wasm\" crossorigin>"
@@ -2024,16 +2239,28 @@ mod tests {
         assert!(html.contains("<title>t</title>"));
 
         let dev = document_prelude("t", "", "", &manifest(), "/__idyll__", true, false);
-        assert!(dev.contains("0000000000000001.js"), "dev keeps the runtime: {dev}");
+        assert!(
+            dev.contains("0000000000000001.js"),
+            "dev keeps the runtime: {dev}"
+        );
         assert!(dev.contains("__IDYLL_DEV__"));
-        assert!(!dev.contains("data-app"), "a dev static page still names no app: {dev}");
+        assert!(
+            !dev.contains("data-app"),
+            "a dev static page still names no app: {dev}"
+        );
     }
 
     // The app's head mount rides inside `<head>`, after the load plan.
     #[test]
     fn the_head_mount_rides_in_the_document_head() {
         let prelude = document_prelude(
-            "t", "<meta charset=\"utf-8\">", "", &manifest(), "/__idyll__", false, true,
+            "t",
+            "<meta charset=\"utf-8\">",
+            "",
+            &manifest(),
+            "/__idyll__",
+            false,
+            true,
         );
         let head_end = prelude.find("</head>").expect("head closes");
         let meta = prelude.find("<meta charset").expect("head content present");
@@ -2045,9 +2272,14 @@ mod tests {
     #[test]
     fn the_skew_guard_precedes_every_asset_reference() {
         let html = doc(&manifest());
-        let guard = html.find("sessionStorage.getItem('idyll-skew')").expect("guard present");
+        let guard = html
+            .find("sessionStorage.getItem('idyll-skew')")
+            .expect("guard present");
         let first_asset = html.find("/__idyll__/00000000").expect("assets referenced");
-        assert!(guard < first_asset, "guard must install before any asset tag: {html}");
+        assert!(
+            guard < first_asset,
+            "guard must install before any asset tag: {html}"
+        );
     }
 
     // The prelude's capture snippet and the runtime's delegated listeners are one
@@ -2119,10 +2351,23 @@ mod tests {
 
         let sheet = document_sheet(&styles);
 
-        assert!(sheet.contains(".x-page{color:#0af}"), "universe rule rides: {sheet}");
-        assert!(sheet.contains(".x-branch{display:none}"), "lazy-branch rule rides: {sheet}");
-        assert!(!sheet.contains("x-foreign"), "another app's rules stay out: {sheet}");
-        assert_eq!(sheet.matches(".x-page{").count(), 1, "no duplicates: {sheet}");
+        assert!(
+            sheet.contains(".x-page{color:#0af}"),
+            "universe rule rides: {sheet}"
+        );
+        assert!(
+            sheet.contains(".x-branch{display:none}"),
+            "lazy-branch rule rides: {sheet}"
+        );
+        assert!(
+            !sheet.contains("x-foreign"),
+            "another app's rules stay out: {sheet}"
+        );
+        assert_eq!(
+            sheet.matches(".x-page{").count(),
+            1,
+            "no duplicates: {sheet}"
+        );
     }
 
     // The one free-form value (font stacks) can't close the inline <style> early.
@@ -2158,8 +2403,15 @@ mod tests {
     // The sheet rides the prelude; no rules, no element.
     #[test]
     fn the_prelude_emits_the_style_element() {
-        let styled =
-            document_prelude("t", "", ".x{color:#0af}\n", &manifest(), "/__idyll__", false, true);
+        let styled = document_prelude(
+            "t",
+            "",
+            ".x{color:#0af}\n",
+            &manifest(),
+            "/__idyll__",
+            false,
+            true,
+        );
         assert!(styled.contains("<style data-idyll>.x{color:#0af}\n</style>"));
         let bare = document_prelude("t", "", "", &manifest(), "/__idyll__", false, true);
         assert!(!bare.contains("<style"));

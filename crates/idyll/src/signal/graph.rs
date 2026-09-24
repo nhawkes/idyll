@@ -115,9 +115,7 @@ impl NodeCore {
     pub(crate) fn retain_observers(&self, keep: impl Fn(&Rc<ViewScope>, u32) -> bool) {
         self.observers.borrow_mut().retain(|obs| match obs {
             Obs::Node(weak) => weak.upgrade().is_some(),
-            Obs::Binding(weak, idx) => {
-                weak.upgrade().is_some_and(|scope| keep(&scope, *idx))
-            }
+            Obs::Binding(weak, idx) => weak.upgrade().is_some_and(|scope| keep(&scope, *idx)),
         });
     }
 
@@ -173,7 +171,9 @@ impl LaneQueues {
 
     /// Highest-priority non-empty lane, or `None` once fully drained.
     fn highest(&self) -> Option<Lane> {
-        Lane::ALL.into_iter().find(|&lane| !self.0[lane as usize].is_empty())
+        Lane::ALL
+            .into_iter()
+            .find(|&lane| !self.0[lane as usize].is_empty())
     }
 
     fn pop_highest(&mut self) -> Option<Root> {
@@ -285,7 +285,10 @@ fn mark_observers(core: &crate::runtime::RuntimeCore, node: &Rc<NodeCore>, state
             Obs::Binding(weak, idx) => {
                 if let Some(scope) = weak.upgrade() {
                     if scope.mark(*idx) {
-                        core.effects().0.borrow_mut().push(Lane::Input, Root::Scope(weak.clone()));
+                        core.effects()
+                            .0
+                            .borrow_mut()
+                            .push(Lane::Input, Root::Scope(weak.clone()));
                     }
                 }
             }
@@ -307,7 +310,10 @@ fn mark(core: &crate::runtime::RuntimeCore, node: &Rc<NodeCore>, state: NodeStat
         return;
     }
     if let Some(lane) = node.effect_lane.get() {
-        core.effects().0.borrow_mut().push(lane, Root::Effect(Rc::downgrade(node)));
+        core.effects()
+            .0
+            .borrow_mut()
+            .push(lane, Root::Effect(Rc::downgrade(node)));
     }
     mark_observers(core, node, NodeState::Check);
 }
@@ -412,13 +418,17 @@ pub(crate) fn flush_step(core: &crate::runtime::RuntimeCore) -> super::FlushStep
             }
             // Running the effect may have enqueued more (e.g. a deferred re-commit
             // waking its observers), so re-read the pending lane after.
-            super::FlushStep::Ran { pending: pending_lane(core) }
+            super::FlushStep::Ran {
+                pending: pending_lane(core),
+            }
         }
         Some(Root::Scope(weak)) => {
             if let Some(scope) = weak.upgrade() {
                 scope.flush();
             }
-            super::FlushStep::Ran { pending: pending_lane(core) }
+            super::FlushStep::Ran {
+                pending: pending_lane(core),
+            }
         }
         None => super::FlushStep::Done,
     }

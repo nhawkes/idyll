@@ -18,10 +18,12 @@ pub async fn TextInput(
     // The field means a string, and says so; the projection off the event is named
     // once, here, rather than in every caller.
     let typed = typed.contra_map(|e: Event| e.value());
-    Ok(ctx.render(live_view! {
-        input css=[styles::INPUT, FOCUS] type=("text") name=(name) placeholder=(placeholder)
-            value=($value) oninput=(typed)
-    }).await?)
+    Ok(ctx
+        .render(live_view! {
+            input css=[styles::INPUT, FOCUS] type=("text") name=(name) placeholder=(placeholder)
+                value=($value) oninput=(typed)
+        })
+        .await?)
 }
 
 #[styles]

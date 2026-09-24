@@ -54,11 +54,18 @@ fn seeded_data(texts: &[(&str, bool)]) -> PageSeed {
 }
 
 fn mount_stream() -> Vec<DomCommand> {
-    let seed = seeded_data(&[("Learn idyll", false), ("Render through the membrane", true)]);
+    let seed = seeded_data(&[
+        ("Learn idyll", false),
+        ("Render through the membrane", true),
+    ]);
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(spawn_live(|ctx| todos(ctx, seed), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| todos(ctx, seed),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -74,7 +81,11 @@ fn the_page_mount_paints_chrome_and_declares_its_islands() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<idyll::Never>();
-    rt.spawn(spawn_live(|ctx| todo_app::page(ctx, seed), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| todo_app::page(ctx, seed),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -92,7 +103,11 @@ fn the_page_mount_paints_chrome_and_declares_its_islands() {
             _ => None,
         })
         .collect();
-    assert_eq!(live, ["board"], "the todos page declares its store root: {commands:#?}");
+    assert_eq!(
+        live,
+        ["board"],
+        "the todos page declares its store root: {commands:#?}"
+    );
 
     let text: Vec<String> = commands
         .iter()
@@ -106,7 +121,10 @@ fn the_page_mount_paints_chrome_and_declares_its_islands() {
             _ => None,
         })
         .collect();
-    assert!(text.iter().any(|t| t == "Todos"), "the chrome heading paints: {text:?}");
+    assert!(
+        text.iter().any(|t| t == "Todos"),
+        "the chrome heading paints: {text:?}"
+    );
     assert!(
         text.iter().any(|t| t == "Prose gauntlet"),
         "the cross-page link paints: {text:?}"
@@ -130,7 +148,10 @@ fn the_page_mount_paints_chrome_and_declares_its_islands() {
             )
         })
         .collect();
-    assert!(slots.is_empty(), "the page paint claims liveness: {slots:?}");
+    assert!(
+        slots.is_empty(),
+        "the page paint claims liveness: {slots:?}"
+    );
     assert!(
         !commands.iter().any(|c| matches!(
             c,
@@ -174,7 +195,10 @@ fn the_mount_stream_upholds_the_fold_contract() {
     let mut known: Vec<NodeId> = Vec::new();
     for c in &commands {
         match c {
-            DomCommand::ReplaceTemplate { template_id, template } => {
+            DomCommand::ReplaceTemplate {
+                template_id,
+                template,
+            } => {
                 let idx = template_id.0 as usize;
                 if templates.len() <= idx {
                     templates.resize(idx + 1, Template::EMPTY);
@@ -184,8 +208,14 @@ fn the_mount_stream_upholds_the_fold_contract() {
                     scratch = slots_of(template); // root registration = root claim
                 }
             }
-            DomCommand::MountFragment { anchor_id, template }
-            | DomCommand::ReplaceFragment { anchor_id, template } => {
+            DomCommand::MountFragment {
+                anchor_id,
+                template,
+            }
+            | DomCommand::ReplaceFragment {
+                anchor_id,
+                template,
+            } => {
                 known.push(*anchor_id); // anchors materialize on first structural use
                 let template = templates
                     .get(template.0 as usize)
@@ -200,7 +230,10 @@ fn the_mount_stream_upholds_the_fold_contract() {
                 );
                 known.push(*node_id);
             }
-            DomCommand::MoveFragment { anchor_id, after_anchor } => {
+            DomCommand::MoveFragment {
+                anchor_id,
+                after_anchor,
+            } => {
                 known.push(*anchor_id);
                 assert!(
                     known.contains(after_anchor),
@@ -219,7 +252,10 @@ fn the_mount_stream_upholds_the_fold_contract() {
             | DomCommand::SetBoolAttr { node_id, .. }
             | DomCommand::AddEventListener { node_id, .. }
             | DomCommand::RemoveEventListener { node_id, .. } => {
-                assert!(known.contains(node_id), "command targets an unknown node id: {c:?}");
+                assert!(
+                    known.contains(node_id),
+                    "command targets an unknown node id: {c:?}"
+                );
             }
             _ => {}
         }
@@ -268,7 +304,11 @@ fn the_mount_stream_upholds_the_fold_contract() {
 
     // (4) The server fold of this exact stream is the clean document.
     let html = fold_html(&commands);
-    assert!(html.contains("Learn idyll"), "fold lost content: {}", html.as_str());
+    assert!(
+        html.contains("Learn idyll"),
+        "fold lost content: {}",
+        html.as_str()
+    );
     assert!(
         html.contains("Render through the membrane"),
         "fold lost content: {}",
@@ -290,7 +330,10 @@ fn the_mount_stream_upholds_the_fold_contract() {
             .any(|r| r.name.contains("-done-text-decoration") && r.css.is_some()),
         _ => false,
     });
-    assert!(done_rule_announced, "the DONE rule text must ride the stream in-band");
+    assert!(
+        done_rule_announced,
+        "the DONE rule text must ride the stream in-band"
+    );
     for scaffolding in ["data-s", "idyll-t", "<!--"] {
         assert!(
             !html.contains(scaffolding),
@@ -308,7 +351,11 @@ fn prose_mount_paints_every_fragment_kind() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<ProseMsg>();
-    rt.spawn(spawn_live(|ctx| prose(ctx, seed), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| prose(ctx, seed),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -322,13 +369,21 @@ fn prose_mount_paints_every_fragment_kind() {
     }
     let html = fold.html();
 
-    assert!(html.contains("hydrate"), "report rows lost: {}", html.as_str());
+    assert!(
+        html.contains("hydrate"),
+        "report rows lost: {}",
+        html.as_str()
+    );
     assert!(
         html.contains(r#"<ol id="keyed"><li>1</li><li>2</li><li>3</li></ol>"#),
         "keyed rows lost: {}",
         html.as_str()
     );
-    assert!(html.contains("kept content"), "kept @if branch lost: {}", html.as_str());
+    assert!(
+        html.contains("kept content"),
+        "kept @if branch lost: {}",
+        html.as_str()
+    );
 }
 
 /// The stream contract **past the initial mount** — the region every fold divergence
@@ -343,7 +398,11 @@ fn the_stream_stays_foldable_through_detach_attach_and_moves() {
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<ProseMsg>();
     let sender = ctx.inbox_sender();
-    rt.spawn(spawn_live(|ctx| prose(ctx, seed), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| prose(ctx, seed),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -359,9 +418,18 @@ fn the_stream_stays_foldable_through_detach_attach_and_moves() {
 
     let commands = driver.take_commands();
     let has = |pred: fn(&DomCommand) -> bool| commands.iter().any(pred);
-    assert!(has(|c| matches!(c, DomCommand::DetachFragment { .. })), "toggle-off detaches");
-    assert!(has(|c| matches!(c, DomCommand::AttachFragment { .. })), "toggle-on re-attaches");
-    assert!(has(|c| matches!(c, DomCommand::MoveFragment { .. })), "reverse moves rows");
+    assert!(
+        has(|c| matches!(c, DomCommand::DetachFragment { .. })),
+        "toggle-off detaches"
+    );
+    assert!(
+        has(|c| matches!(c, DomCommand::AttachFragment { .. })),
+        "toggle-on re-attaches"
+    );
+    assert!(
+        has(|c| matches!(c, DomCommand::MoveFragment { .. })),
+        "reverse moves rows"
+    );
 
     let mut folded = idyll::HtmlFold::new();
     for command in &commands {
@@ -402,7 +470,11 @@ fn the_stream_stays_foldable_through_detach_attach_and_moves() {
     let mut driver2 = CommandBufferDriver::new();
     let ctx2 = rt2.ctx::<ProseMsg>();
     let sender2 = ctx2.inbox_sender();
-    rt2.spawn(spawn_live(|ctx| prose(ctx, seed), ctx2, idyll::component::report_to_log));
+    rt2.spawn(spawn_live(
+        |ctx| prose(ctx, seed),
+        ctx2,
+        idyll::component::report_to_log,
+    ));
     rt2.run_once();
     rt2.process_pending_view(&mut driver2);
     rt2.flush(&mut driver2);
@@ -415,7 +487,11 @@ fn the_stream_stays_foldable_through_detach_attach_and_moves() {
     for command in &driver2.take_commands() {
         replayed.apply(command);
     }
-    assert_eq!(html.as_str(), replayed.html().as_str(), "two mounts, one document");
+    assert_eq!(
+        html.as_str(),
+        replayed.html().as_str(),
+        "two mounts, one document"
+    );
 }
 
 /// The **mutation round-trip** contract, end to end minus the network: the Add click
@@ -436,7 +512,11 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
     // Stand in for the board: the store and its absorb rooted on this component —
     // the refresh applies in its turn, before any queued message dequeues.
     Store::provide(&ctx, &seed).expect("a hand-built seed replays");
-    rt.spawn(spawn_live(|ctx| todos(ctx, seed), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| todos(ctx, seed),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -445,9 +525,11 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
         mount
             .iter()
             .find_map(|c| match c {
-                DomCommand::AddEventListener { event_type, handler_id, .. } if event_type == want => {
-                    Some(*handler_id)
-                }
+                DomCommand::AddEventListener {
+                    event_type,
+                    handler_id,
+                    ..
+                } if event_type == want => Some(*handler_id),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no {want} handler in the mount: {mount:?}"))
@@ -458,14 +540,27 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
     let draft = handler_for("input");
     driver.dispatch_event(
         HandlerId(draft.0),
-        idyll::Event { target_value: Some("Write a test".into()), key: None, timestamp: None, rect: None },
+        idyll::Event {
+            target_value: Some("Write a test".into()),
+            key: None,
+            timestamp: None,
+            rect: None,
+        },
     );
     rt.run_to_quiescence();
     rt.flush(&mut driver);
     driver.take_commands(); // the draft echo — the input reflects its own value
 
     let add = handler_for("click");
-    driver.dispatch_event(HandlerId(add.0), idyll::Event { target_value: None, key: None, timestamp: None, rect: None });
+    driver.dispatch_event(
+        HandlerId(add.0),
+        idyll::Event {
+            target_value: None,
+            key: None,
+            timestamp: None,
+            rect: None,
+        },
+    );
     rt.run_to_quiescence();
     rt.flush(&mut driver);
     let commands = driver.take_commands();
@@ -475,7 +570,11 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
     let request_id = commands
         .iter()
         .find_map(|c| match c {
-            DomCommand::ServerRequest { request_id, op, args } => {
+            DomCommand::ServerRequest {
+                request_id,
+                op,
+                args,
+            } => {
                 assert_eq!(*op, AddTodoOp::op_hash());
                 let args: serde_json::Value = serde_json::from_slice(args).unwrap();
                 assert_eq!(args, serde_json::json!({ "text": "Write a test" }));
@@ -485,7 +584,9 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
         })
         .expect("Add must emit a ServerRequest: {commands:?}");
     assert!(
-        !commands.iter().any(|c| matches!(c, DomCommand::MountFragment { .. })),
+        !commands
+            .iter()
+            .any(|c| matches!(c, DomCommand::MountFragment { .. })),
         "no row may mount before the server answers: {commands:?}"
     );
 
@@ -514,7 +615,9 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
     let commands = driver.take_commands();
 
     assert!(
-        commands.iter().any(|c| matches!(c, DomCommand::MountFragment { .. })),
+        commands
+            .iter()
+            .any(|c| matches!(c, DomCommand::MountFragment { .. })),
         "the seed-driven row must mount: {commands:?}"
     );
     assert!(
@@ -525,7 +628,10 @@ fn a_mutation_round_trips_as_request_out_then_seed_driven_row_in() {
     );
 
     // A second delivery of the same id is a no-op (the continuation is single-shot).
-    assert!(!rt.deliver_response(request_id, Err(idyll::RequestError::Transport("dup".into()))));
+    assert!(!rt.deliver_response(
+        request_id,
+        Err(idyll::RequestError::Transport("dup".into()))
+    ));
 }
 
 /// **The namespace rides with the template.** A fragment's IR begins at its row's tag,
@@ -562,7 +668,10 @@ fn a_fragment_carries_the_namespace_it_was_written_in() {
         _ => String::new(),
     };
     let svg_of = |tag: &str| {
-        templates.iter().find(|t| first_tag(t) == tag).map(|t| t.svg)
+        templates
+            .iter()
+            .find(|t| first_tag(t) == tag)
+            .map(|t| t.svg)
     };
 
     // The root owns the `<svg>` element itself, so its own nodes are HTML — entering
@@ -587,7 +696,10 @@ fn a_live_fallback_is_a_subtree_the_pre_order_walk_steps_over() {
 
     let fallback = View::element(
         "div",
-        [TplAttr { name: "class".into(), value: "fallback".into() }],
+        [TplAttr {
+            name: "class".into(),
+            value: "fallback".into(),
+        }],
         View::text("stood in"),
     );
     // Two levels deep, with a sibling after each: the outer element's child count is
@@ -612,7 +724,9 @@ fn a_live_fallback_is_a_subtree_the_pre_order_walk_steps_over() {
         template_id: idyll::driver::TemplateId(0),
         template: content.into_template(),
     });
-    fold.apply(&DomCommand::MountRoot { template_id: idyll::driver::TemplateId(0) });
+    fold.apply(&DomCommand::MountRoot {
+        template_id: idyll::driver::TemplateId(0),
+    });
 
     assert_eq!(
         fold.html().as_str(),

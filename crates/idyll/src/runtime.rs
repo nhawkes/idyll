@@ -57,7 +57,8 @@ pub struct RuntimeCore {
     /// In-flight server requests: request id → the continuation that turns the response
     /// into a message in the requesting component's inbox. An entry whose live has since
     /// unmounted resolves into a dropped inbox — a no-op by construction.
-    pending_requests: RefCell<HashMap<u32, Box<dyn FnOnce(Result<Vec<u8>, crate::driver::RequestError>)>>>,
+    pending_requests:
+        RefCell<HashMap<u32, Box<dyn FnOnce(Result<Vec<u8>, crate::driver::RequestError>)>>>,
     next_request_id: Cell<u32>,
     /// Whether this runtime is replaying a recorded message log (see [`replay_mode`]).
     replay: Cell<bool>,
@@ -189,7 +190,10 @@ pub(crate) struct ReplayModeGuard {
 
 impl ReplayModeGuard {
     pub(crate) fn enter(core: &Rc<RuntimeCore>) -> Self {
-        ReplayModeGuard { core: Rc::clone(core), prev: core.replay.replace(true) }
+        ReplayModeGuard {
+            core: Rc::clone(core),
+            prev: core.replay.replace(true),
+        }
     }
 }
 
@@ -229,10 +233,12 @@ impl RuntimeCore {
         args: Vec<u8>,
         on_response: Box<dyn FnOnce(Result<Vec<u8>, crate::driver::RequestError>)>,
     ) {
-        self.enqueue_host_request(on_response, |request_id| crate::driver::DomOp::ServerRequest {
-            request_id,
-            op,
-            args,
+        self.enqueue_host_request(on_response, |request_id| {
+            crate::driver::DomOp::ServerRequest {
+                request_id,
+                op,
+                args,
+            }
         });
     }
 
@@ -292,22 +298,28 @@ impl RuntimeCore {
     pub(crate) fn child_render_sink(
         self: &Rc<Self>,
         child_id: ChildId,
-    ) -> (Rc<RefCell<Vec<MountGuard>>>, Rc<dyn Fn(crate::ctx::WiredView)>) {
+    ) -> (
+        Rc<RefCell<Vec<MountGuard>>>,
+        Rc<dyn Fn(crate::ctx::WiredView)>,
+    ) {
         let guards = Rc::new(RefCell::new(Vec::<MountGuard>::new()));
         let sink = {
             let guards = Rc::clone(&guards);
             let core = Rc::clone(self);
-            Rc::new(move |view| {
-                match core.child_anchors.borrow().get(&child_id).copied() {
+            Rc::new(
+                move |view| match core.child_anchors.borrow().get(&child_id).copied() {
                     Some(anchor) => core.enqueue_child_render(anchor, view, Rc::clone(&guards)),
                     None => {
                         core.child_renders.borrow_mut().insert(
                             child_id,
-                            StashedChildRender { view, guards: Rc::clone(&guards) },
+                            StashedChildRender {
+                                view,
+                                guards: Rc::clone(&guards),
+                            },
                         );
                     }
-                }
-            }) as Rc<dyn Fn(crate::ctx::WiredView)>
+                },
+            ) as Rc<dyn Fn(crate::ctx::WiredView)>
         };
         (guards, sink)
     }
@@ -328,17 +340,22 @@ impl RuntimeCore {
         guards: Rc<RefCell<Vec<MountGuard>>>,
     ) {
         let core = Rc::clone(self);
-        self.pending_mounts.borrow_mut().push(Box::new(move |runtime, driver| {
-            let template = driver.register_template(view.template());
-            driver.apply(vec![crate::driver::DomOp::MountFragment { anchor_id, template }]);
-            let mut mounted = mount_wired_view(runtime, &mut view, driver);
-            // Reclaim the spliced subtree when the child unmounts: `MountFragment` created it at
-            // this anchor, so `RemoveFragment` there tears it down — including static structure the
-            // guest never minted node ids for.
-            mounted.push(remove_fragment_guard(&core, anchor_id));
-            *guards.borrow_mut() = mounted;
-            Vec::new()
-        }));
+        self.pending_mounts
+            .borrow_mut()
+            .push(Box::new(move |runtime, driver| {
+                let template = driver.register_template(view.template());
+                driver.apply(vec![crate::driver::DomOp::MountFragment {
+                    anchor_id,
+                    template,
+                }]);
+                let mut mounted = mount_wired_view(runtime, &mut view, driver);
+                // Reclaim the spliced subtree when the child unmounts: `MountFragment` created it at
+                // this anchor, so `RemoveFragment` there tears it down — including static structure the
+                // guest never minted node ids for.
+                mounted.push(remove_fragment_guard(&core, anchor_id));
+                *guards.borrow_mut() = mounted;
+                Vec::new()
+            }));
     }
 
     /// Hand a live component future to the executor at render hand-off. Queues it with a
@@ -348,7 +365,9 @@ impl RuntimeCore {
     /// `child_render_sink` on the view side.
     pub(crate) fn spawn_pending(&self, fut: impl Future<Output = ()> + 'static) -> MountGuard {
         let cancelled = Rc::new(Cell::new(false));
-        self.pending_tasks.borrow_mut().push((Rc::clone(&cancelled), Box::pin(fut)));
+        self.pending_tasks
+            .borrow_mut()
+            .push((Rc::clone(&cancelled), Box::pin(fut)));
         MountGuard::new(CancelOnDrop { cancelled })
     }
 }
@@ -534,7 +553,11 @@ impl Runtime {
         request_id: crate::driver::RequestId,
         response: Result<Vec<u8>, crate::driver::RequestError>,
     ) -> bool {
-        let handler = self.core.pending_requests.borrow_mut().remove(&request_id.0);
+        let handler = self
+            .core
+            .pending_requests
+            .borrow_mut()
+            .remove(&request_id.0);
         match handler {
             Some(handler) => {
                 handler(response);
@@ -809,7 +832,6 @@ impl Runtime {
             Vec::new()
         }
     }
-
 }
 
 /// Mount a wired view's dynamics. **Registration/placement of its template is the
@@ -857,21 +879,27 @@ fn mount_wired_view(
         .into_iter()
         .map(|(slot, child_id)| (driver.alloc_slot_node_id(slot), child_id))
         .collect();
-    type FragmentDispatch =
-        Rc<dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut>;
-    let fragments: Vec<(crate::driver::NodeId, FragmentDispatch, u32, crate::ctx::WiredFragmentDecl)> =
-        block_fragments
-            .into_iter()
-            .flat_map(|block| {
-                let dispatch = block.dispatch;
-                block.decls.into_iter().map(move |(index, decl)| {
-                    (decl.slot, Rc::clone(&dispatch), index, decl)
-                })
-            })
-            .map(|(slot, dispatch, index, decl)| {
-                (driver.alloc_slot_node_id(slot), dispatch, index, decl)
-            })
-            .collect();
+    type FragmentDispatch = Rc<
+        dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut,
+    >;
+    let fragments: Vec<(
+        crate::driver::NodeId,
+        FragmentDispatch,
+        u32,
+        crate::ctx::WiredFragmentDecl,
+    )> = block_fragments
+        .into_iter()
+        .flat_map(|block| {
+            let dispatch = block.dispatch;
+            block
+                .decls
+                .into_iter()
+                .map(move |(index, decl)| (decl.slot, Rc::clone(&dispatch), index, decl))
+        })
+        .map(|(slot, dispatch, index, decl)| {
+            (driver.alloc_slot_node_id(slot), dispatch, index, decl)
+        })
+        .collect();
     minted.extend(child_anchors.iter().map(|(id, _)| *id));
     minted.extend(fragments.iter().map(|(id, _, _, _)| *id));
 
@@ -977,7 +1005,11 @@ fn measure_guard(
         }
     }
 
-    MountGuard::new(MeasureGuard { core: Rc::downgrade(core), node_id, handler_id })
+    MountGuard::new(MeasureGuard {
+        core: Rc::downgrade(core),
+        node_id,
+        handler_id,
+    })
 }
 
 /// Release a child's anchor registration when the parent's view unmounts: the anchor
@@ -998,7 +1030,10 @@ fn child_anchor_guard(core: &Rc<RuntimeCore>, child_id: ChildId) -> MountGuard {
         }
     }
 
-    MountGuard::new(ChildAnchorGuard { core: Rc::downgrade(core), child_id })
+    MountGuard::new(ChildAnchorGuard {
+        core: Rc::downgrade(core),
+        child_id,
+    })
 }
 
 /// Mount the view's tick subscriptions (`ctx.every` / `ctx.frames`): register the
@@ -1022,8 +1057,10 @@ fn mount_tick_subs(
     let owner = &owner;
     for sub in view.take_tick_subs() {
         let handler_id = driver.alloc_handler_id();
-        driver
-            .register_event_handler(handler_id, crate::driver::EventHandler::single(Rc::clone(&sub.handler)));
+        driver.register_event_handler(
+            handler_id,
+            crate::driver::EventHandler::single(Rc::clone(&sub.handler)),
+        );
         let interval_ms = sub.interval_ms;
         let gate = sub.gate;
         let active = Cell::new(false);
@@ -1036,7 +1073,10 @@ fn mount_tick_subs(
             active.set(now);
             if let Some(core) = tick_core.upgrade() {
                 core.enqueue_dom_op(if now {
-                    crate::driver::DomOp::StartTicks { handler_id, interval_ms }
+                    crate::driver::DomOp::StartTicks {
+                        handler_id,
+                        interval_ms,
+                    }
                 } else {
                     crate::driver::DomOp::StopTicks { handler_id }
                 });
@@ -1071,7 +1111,11 @@ fn mount_nav_subs(
     view: &mut crate::ctx::WiredView,
     driver: &mut dyn crate::driver::DomDriver,
 ) {
-    let handlers = view.take_nav_subs().into_iter().map(|s| s.handler).collect();
+    let handlers = view
+        .take_nav_subs()
+        .into_iter()
+        .map(|s| s.handler)
+        .collect();
     mount_watchers(core, driver, handlers, |handler_id| {
         crate::driver::DomOp::WatchNavigation { handler_id }
     });
@@ -1083,7 +1127,11 @@ fn mount_size_subs(
     view: &mut crate::ctx::WiredView,
     driver: &mut dyn crate::driver::DomDriver,
 ) {
-    let handlers = view.take_size_subs().into_iter().map(|s| s.handler).collect();
+    let handlers = view
+        .take_size_subs()
+        .into_iter()
+        .map(|s| s.handler)
+        .collect();
     mount_watchers(core, driver, handlers, |handler_id| {
         crate::driver::DomOp::WatchSize { handler_id }
     });
@@ -1114,7 +1162,10 @@ fn free_nodes_guard(core: &Rc<RuntimeCore>, node_ids: Vec<crate::driver::NodeId>
             }
         }
     }
-    MountGuard::new(FreeOnDrop { core: Rc::downgrade(core), node_ids })
+    MountGuard::new(FreeOnDrop {
+        core: Rc::downgrade(core),
+        node_ids,
+    })
 }
 
 /// Tears down the DOM a view-embedded child spliced at `anchor_id` when its mount guards drop —
@@ -1140,7 +1191,10 @@ fn remove_fragment_guard(core: &Rc<RuntimeCore>, anchor_id: crate::driver::NodeI
             }
         }
     }
-    MountGuard::new(RemoveOnDrop { core: Rc::downgrade(core), anchor_id })
+    MountGuard::new(RemoveOnDrop {
+        core: Rc::downgrade(core),
+        anchor_id,
+    })
 }
 
 /// A mounted `@for` row: its anchor, its disposal scope (a child of the `@for`'s
@@ -1164,7 +1218,10 @@ fn mount_rows(
         let row_owner = row_view.owner.clone();
         let anchor_id = driver.alloc_node_id();
         let template = driver.register_template(row_view.template.clone());
-        driver.apply(vec![crate::driver::DomOp::MountFragment { anchor_id, template }]);
+        driver.apply(vec![crate::driver::DomOp::MountFragment {
+            anchor_id,
+            template,
+        }]);
         driver.apply(vec![crate::driver::DomOp::MoveFragment {
             anchor_id,
             after_anchor: previous_anchor,
@@ -1176,9 +1233,14 @@ fn mount_rows(
         // ids go together, whenever the row goes — spliced away, or dropped with the region
         // around it.
         row_guards.push(remove_fragment_guard(&runtime.core, anchor_id));
-        mounted
-            .borrow_mut()
-            .insert(row, MountedRow { anchor_id, owner: row_owner, _guards: row_guards });
+        mounted.borrow_mut().insert(
+            row,
+            MountedRow {
+                anchor_id,
+                owner: row_owner,
+                _guards: row_guards,
+            },
+        );
         previous_anchor = anchor_id;
     }
 }
@@ -1187,7 +1249,9 @@ fn mount_rows(
 /// can resolve in the same slot-scope window as child anchors — before any fragment
 /// mounts (the first row/branch instantiation replaces the slot scope).
 struct BlockFragments {
-    dispatch: Rc<dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut>,
+    dispatch: Rc<
+        dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut,
+    >,
     decls: Vec<(u32, crate::ctx::WiredFragmentDecl)>,
 }
 
@@ -1242,7 +1306,10 @@ fn mount_blocks(
                     guards.push(event_listener_guard(core, node_id, event_type, handler_id));
                 }
                 crate::live_view::EventBinding::Measure => {
-                    driver.apply(vec![crate::driver::DomOp::WatchMeasure { node_id, handler_id }]);
+                    driver.apply(vec![crate::driver::DomOp::WatchMeasure {
+                        node_id,
+                        handler_id,
+                    }]);
                     guards.push(measure_guard(core, node_id, handler_id));
                 }
             }
@@ -1271,7 +1338,9 @@ fn mount_blocks(
         scope.install(
             count,
             Rc::new(move |cx, idx| {
-                let Some(op) = run(cx, &nodes, idx) else { return };
+                let Some(op) = run(cx, &nodes, idx) else {
+                    return;
+                };
                 let mut last = last.borrow_mut();
                 if last[idx as usize].as_ref() == Some(&op) {
                     return;
@@ -1322,9 +1391,15 @@ fn mount_kept_branch_fragment(
         // before the mount pass runs, the region's guards are already emitting its
         // teardown, and running a stale swap would splice zombie DOM at a dead anchor.
         let branches = Rc::downgrade(&branches);
-        let Some(core) = mount_core.upgrade() else { return };
-        core.pending_mounts.borrow_mut().push(Box::new(move |runtime, driver| {
-                let Some(branches) = branches.upgrade() else { return Vec::new() };
+        let Some(core) = mount_core.upgrade() else {
+            return;
+        };
+        core.pending_mounts
+            .borrow_mut()
+            .push(Box::new(move |runtime, driver| {
+                let Some(branches) = branches.upgrade() else {
+                    return Vec::new();
+                };
                 if let Some(prev) = prev {
                     if let Some(branch) = branches.borrow().get(&prev) {
                         driver.apply(vec![crate::driver::DomOp::DetachFragment {
@@ -1340,7 +1415,10 @@ fn mount_kept_branch_fragment(
                         let anchor_id = driver.alloc_node_id();
                         let template = driver.register_template(view.template.clone());
                         driver.apply(vec![
-                            crate::driver::DomOp::MountFragment { anchor_id, template },
+                            crate::driver::DomOp::MountFragment {
+                                anchor_id,
+                                template,
+                            },
                             crate::driver::DomOp::MoveFragment {
                                 anchor_id,
                                 after_anchor: slot_anchor,
@@ -1350,7 +1428,10 @@ fn mount_kept_branch_fragment(
                         branch_guards.push(free_nodes_guard(&runtime.core, vec![anchor_id]));
                         branches.borrow_mut().insert(
                             n,
-                            KeptBranch { anchor_id, _guards: branch_guards },
+                            KeptBranch {
+                                anchor_id,
+                                _guards: branch_guards,
+                            },
                         );
                     }
                 }
@@ -1393,8 +1474,12 @@ fn mount_branch_fragment(
         let branch_guards = Rc::downgrade(&branch_guards);
         let branch_owner = Rc::downgrade(&branch_owner);
         let mounted = Rc::clone(&mounted);
-        let Some(core) = mount_core.upgrade() else { return };
-        core.pending_mounts.borrow_mut().push(Box::new(move |runtime, driver| {
+        let Some(core) = mount_core.upgrade() else {
+            return;
+        };
+        core.pending_mounts
+            .borrow_mut()
+            .push(Box::new(move |runtime, driver| {
                 let (Some(branch_guards), Some(branch_owner)) =
                     (branch_guards.upgrade(), branch_owner.upgrade())
                 else {
@@ -1407,9 +1492,15 @@ fn mount_branch_fragment(
                         .unwrap_or(crate::template::Template::EMPTY),
                 );
                 let op = if mounted.replace(true) {
-                    crate::driver::DomOp::ReplaceFragment { anchor_id, template }
+                    crate::driver::DomOp::ReplaceFragment {
+                        anchor_id,
+                        template,
+                    }
                 } else {
-                    crate::driver::DomOp::MountFragment { anchor_id, template }
+                    crate::driver::DomOp::MountFragment {
+                        anchor_id,
+                        template,
+                    }
                 };
                 driver.apply(vec![op]);
                 // Reclaim the outgoing branch: drop its mount guards, then dispose
@@ -1429,7 +1520,9 @@ fn mount_branch_fragment(
 
 fn mount_fragment(
     runtime: &mut Runtime,
-    dispatch: Rc<dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut>,
+    dispatch: Rc<
+        dyn Fn(&crate::signal::Cx, crate::live_view::FragmentOp) -> crate::ctx::WiredFragmentOut,
+    >,
     index: u32,
     kind: crate::ctx::WiredFragmentKind,
     owner: &crate::owner::Owner,
@@ -1453,7 +1546,10 @@ fn mount_fragment(
         let dispatch = Rc::clone(&dispatch);
         move |cx: &crate::signal::Cx, arm: u32| match dispatch(
             cx,
-            FragmentOp::Arm { fragment: index, arm },
+            FragmentOp::Arm {
+                fragment: index,
+                arm,
+            },
         ) {
             WiredFragmentOut::LiveView(view) => Some(view),
             _ => None,
@@ -1485,24 +1581,33 @@ fn mount_fragment(
             let mounted = Cell::new(false);
             let mount_core = Rc::downgrade(&owner.runtime());
             crate::signal::reaction::Reaction::spawn_in(owner, move |cx| {
-                let WiredFragmentOut::Content(rendered) =
-                    dispatch(cx, FragmentOp::Content(index))
+                let WiredFragmentOut::Content(rendered) = dispatch(cx, FragmentOp::Content(index))
                 else {
                     return;
                 };
                 let first = !mounted.replace(true);
-                let Some(core) = mount_core.upgrade() else { return };
-                core.pending_mounts.borrow_mut().push(Box::new(move |runtime, driver| {
-                    runtime.live.extend(rendered.live());
-                    let template = driver.register_template(rendered.template().clone());
-                    let op = if first {
-                        crate::driver::DomOp::MountFragment { anchor_id, template }
-                    } else {
-                        crate::driver::DomOp::ReplaceFragment { anchor_id, template }
-                    };
-                    driver.apply(vec![op]);
-                    Vec::new()
-                }));
+                let Some(core) = mount_core.upgrade() else {
+                    return;
+                };
+                core.pending_mounts
+                    .borrow_mut()
+                    .push(Box::new(move |runtime, driver| {
+                        runtime.live.extend(rendered.live());
+                        let template = driver.register_template(rendered.template().clone());
+                        let op = if first {
+                            crate::driver::DomOp::MountFragment {
+                                anchor_id,
+                                template,
+                            }
+                        } else {
+                            crate::driver::DomOp::ReplaceFragment {
+                                anchor_id,
+                                template,
+                            }
+                        };
+                        driver.apply(vec![op]);
+                        Vec::new()
+                    }));
             });
         }
         WiredFragmentKind::FixedList(rows) => {
@@ -1572,9 +1677,15 @@ fn mount_fragment(
                 // Weak for the same reason as the branch swaps: a list region disposed
                 // before the mount pass must not have a stale splice touch its rows.
                 let mounted = Rc::downgrade(&mounted_rows_eff);
-                let Some(core) = mount_core.upgrade() else { return };
-                core.pending_mounts.borrow_mut().push(Box::new(move |runtime, driver| {
-                        let Some(mounted) = mounted.upgrade() else { return Vec::new() };
+                let Some(core) = mount_core.upgrade() else {
+                    return;
+                };
+                core.pending_mounts
+                    .borrow_mut()
+                    .push(Box::new(move |runtime, driver| {
+                        let Some(mounted) = mounted.upgrade() else {
+                            return Vec::new();
+                        };
                         for op in ops {
                             match op {
                                 crate::SpliceOp::Insert { row, after } => {
@@ -1584,12 +1695,9 @@ fn mount_fragment(
                                     let row_owner = view.owner.clone();
                                     let anchor_id = driver.alloc_node_id();
                                     let after_anchor = after
-                                        .and_then(|r| {
-                                            mounted.borrow().get(&r).map(|m| m.anchor_id)
-                                        })
+                                        .and_then(|r| mounted.borrow().get(&r).map(|m| m.anchor_id))
                                         .unwrap_or(list_anchor);
-                                    let template =
-                                        driver.register_template(view.template.clone());
+                                    let template = driver.register_template(view.template.clone());
                                     driver.apply(vec![crate::driver::DomOp::MountFragment {
                                         anchor_id,
                                         template,
@@ -1625,8 +1733,7 @@ fn mount_fragment(
                                     }
                                 }
                                 crate::SpliceOp::Move { row, after } => {
-                                    let anchor_id =
-                                        mounted.borrow().get(&row).map(|m| m.anchor_id);
+                                    let anchor_id = mounted.borrow().get(&row).map(|m| m.anchor_id);
                                     if let Some(anchor_id) = anchor_id {
                                         let after_anchor = after
                                             .and_then(|r| {
@@ -1705,13 +1812,25 @@ mod tests {
         let mut rt = Runtime::new();
         let guard = rt.core().spawn_pending(Parked(polls2));
         rt.run_once(); // adopt + first poll
-        assert_eq!(polls.load(Ordering::Relaxed), 1, "the handed-off future was adopted and driven");
+        assert_eq!(
+            polls.load(Ordering::Relaxed),
+            1,
+            "the handed-off future was adopted and driven"
+        );
         assert_eq!(rt.live_task_count(), 1);
 
         drop(guard); // parent unmounts the child
         rt.run_once(); // reap the cancelled task before polling
-        assert_eq!(rt.live_task_count(), 0, "dropping the guard reaps the future");
-        assert_eq!(polls.load(Ordering::Relaxed), 1, "a cancelled future is never polled again");
+        assert_eq!(
+            rt.live_task_count(),
+            0,
+            "dropping the guard reaps the future"
+        );
+        assert_eq!(
+            polls.load(Ordering::Relaxed),
+            1,
+            "a cancelled future is never polled again"
+        );
     }
 
     #[test]
@@ -1741,5 +1860,4 @@ mod tests {
         rt.run_to_quiescence();
         assert_eq!(count.load(Ordering::SeqCst), 2);
     }
-
 }

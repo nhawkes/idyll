@@ -52,7 +52,10 @@ impl<F: NodeFragment> Frag<F> {
     /// Reference the record with this id. Normally produced by a generated edge
     /// accessor, an operation's roots, or `F::key(id)` — not by hand.
     pub fn from_id(id: F::Id) -> Self {
-        Self { id, _fragment: PhantomData }
+        Self {
+            id,
+            _fragment: PhantomData,
+        }
     }
 
     /// Consume the reference (fragment `F`'s generated `read` resolves it).
@@ -90,7 +93,10 @@ pub struct Live<F: Fragment> {
 
 impl<F: Fragment> Live<F> {
     pub fn new(cell: Signal<serde_json::Value>) -> Self {
-        Self { cell, _fragment: PhantomData }
+        Self {
+            cell,
+            _fragment: PhantomData,
+        }
     }
 
     pub fn get(&self, cx: &Cx) -> F {
@@ -131,7 +137,10 @@ pub fn resolve_fragment<F: NodeFragment>(cache: &Cache, frag: Frag<F>) -> Live<F
     let id = wire_id(frag);
     match cache.peek_json(F::ON, &id) {
         Some(signal) => Live::new(signal),
-        None => panic!("`{}` {id} is not in the store — the seed is incomplete", F::ON),
+        None => panic!(
+            "`{}` {id} is not in the store — the seed is incomplete",
+            F::ON
+        ),
     }
 }
 
@@ -149,10 +158,9 @@ pub fn field_value<T: DeserializeOwned>(record: &serde_json::Value, on: &str, fi
 
 /// The raw JSON of one field — edge accessors take ids/embedded values with it.
 pub fn field_json(record: &serde_json::Value, on: &str, field: &str) -> serde_json::Value {
-    record
-        .get(field)
-        .cloned()
-        .unwrap_or_else(|| panic!("schema violation: `{on}` record has no field `{field}`: {record}"))
+    record.get(field).cloned().unwrap_or_else(|| {
+        panic!("schema violation: `{on}` record has no field `{field}`: {record}")
+    })
 }
 
 #[cfg(test)]
@@ -179,7 +187,10 @@ mod tests {
         on: "User",
         selection: &[
             Sel::Leaf { field: "name" },
-            Sel::Spread { edge: "money", frag: &MONEY_DEF },
+            Sel::Spread {
+                edge: "money",
+                frag: &MONEY_DEF,
+            },
         ],
     };
     impl Fragment for Avatar {
@@ -209,7 +220,9 @@ mod tests {
         const ON: &'static str = "Money";
         const DEF: &'static FragmentDef = &MONEY_DEF;
         fn from_record(record: &serde_json::Value) -> Self {
-            MoneyFrag { amount: field_value(record, "Money", "amount") }
+            MoneyFrag {
+                amount: field_value(record, "Money", "amount"),
+            }
         }
     }
 
@@ -253,7 +266,10 @@ mod tests {
         assert!(matches!(future.as_mut().poll(&mut cx), Poll::Pending));
 
         let mut seed = crate::Seed::new();
-        seed.push_raw("User", serde_json::json!({ "id": 1, "name": "Grace", "money": { "amount": 0 } }));
+        seed.push_raw(
+            "User",
+            serde_json::json!({ "id": 1, "name": "Grace", "money": { "amount": 0 } }),
+        );
         cache.replay(&turn, &seed).expect("seed replays");
         assert!(matches!(future.as_mut().poll(&mut cx), Poll::Ready(_)));
     }

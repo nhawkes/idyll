@@ -32,9 +32,21 @@ impl Db {
     fn seeded() -> Self {
         Db {
             todos: std::sync::Arc::new(std::sync::RwLock::new(vec![
-                Todo { id: 3, text: "Render through the membrane".into(), done: false },
-                Todo { id: 2, text: "Preload a query".into(), done: true },
-                Todo { id: 1, text: "Learn idyll".into(), done: true },
+                Todo {
+                    id: 3,
+                    text: "Render through the membrane".into(),
+                    done: false,
+                },
+                Todo {
+                    id: 2,
+                    text: "Preload a query".into(),
+                    done: true,
+                },
+                Todo {
+                    id: 1,
+                    text: "Learn idyll".into(),
+                    done: true,
+                },
             ])),
         }
     }
@@ -44,14 +56,23 @@ impl Db {
     }
 
     fn get(&self, id: u64) -> Option<Todo> {
-        self.todos.read().unwrap().iter().find(|t| t.id == id).cloned()
+        self.todos
+            .read()
+            .unwrap()
+            .iter()
+            .find(|t| t.id == id)
+            .cloned()
     }
 
     /// Newest first: the insert-at-front shape that shifts every row below it.
     fn add(&self, text: String) -> Todo {
         let mut todos = self.todos.write().unwrap();
         let id = todos.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-        let todo = Todo { id, text, done: false };
+        let todo = Todo {
+            id,
+            text,
+            done: false,
+        };
         todos.insert(0, todo.clone());
         todo
     }
@@ -67,7 +88,8 @@ impl Db {
 /// The node resolver the executor follows `Ref<Todo>` edges with.
 impl Fetch<Db> for Todo {
     async fn fetch(db: Db, id: u64) -> Result<Todo, BoxError> {
-        db.get(id).ok_or_else(|| format!("no Todo with id {id}").into())
+        db.get(id)
+            .ok_or_else(|| format!("no Todo with id {id}").into())
     }
 }
 
@@ -109,14 +131,20 @@ struct Mutation {
 fn root() -> AppRoot<Db> {
     AppRoot::from(Root {
         query: Query { route: route() },
-        mutation: Mutation { add_todo: add_todo(), toggle_todo: toggle_todo() },
+        mutation: Mutation {
+            add_todo: add_todo(),
+            toggle_todo: toggle_todo(),
+        },
     })
     .fetch::<Todo>()
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let port = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(3002);
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3002);
 
     Server::builder()
         .app_crate("todo-live-app")

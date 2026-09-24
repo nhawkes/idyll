@@ -58,7 +58,11 @@ pub struct LiveDriver<R> {
 
 impl<R> Default for LiveDriver<R> {
     fn default() -> Self {
-        LiveDriver { slots: Vec::new(), ready: Arc::new(Mutex::new(VecDeque::new())), next_id: 1 }
+        LiveDriver {
+            slots: Vec::new(),
+            ready: Arc::new(Mutex::new(VecDeque::new())),
+            next_id: 1,
+        }
     }
 }
 
@@ -68,7 +72,10 @@ impl<R: Future<Output = ()> + Unpin> LiveDriver<R> {
     }
 
     fn waker_for(&self, id: SlotId) -> Waker {
-        Waker::from(Arc::new(SlotWaker { id, ready: Arc::clone(&self.ready) }))
+        Waker::from(Arc::new(SlotWaker {
+            id,
+            ready: Arc::clone(&self.ready),
+        }))
     }
 
     /// Mount a root and poll it **once**, now — running its setup and initial render to
@@ -78,7 +85,11 @@ impl<R: Future<Output = ()> + Unpin> LiveDriver<R> {
     pub fn mount(&mut self, root: R) -> SlotId {
         let id = SlotId(self.next_id);
         self.next_id += 1;
-        self.slots.push(Slot { id, root, live: true });
+        self.slots.push(Slot {
+            id,
+            root,
+            live: true,
+        });
         self.poll_slot(id);
         id
     }
@@ -86,7 +97,9 @@ impl<R: Future<Output = ()> + Unpin> LiveDriver<R> {
     /// Poll one slot once. No-op for an unknown or done slot.
     fn poll_slot(&mut self, id: SlotId) {
         let waker = self.waker_for(id);
-        let Some(slot) = self.slots.iter_mut().find(|s| s.id == id) else { return };
+        let Some(slot) = self.slots.iter_mut().find(|s| s.id == id) else {
+            return;
+        };
         if !slot.live {
             return;
         }
@@ -151,10 +164,17 @@ mod tests {
     fn mount_polls_once_and_a_wake_re_polls() {
         let polls = Rc::new(RefCell::new(0u32));
         let mut driver: LiveDriver<Recorder> = LiveDriver::new();
-        let id = driver.mount(Recorder { polls: Rc::clone(&polls), wake_once: true });
+        let id = driver.mount(Recorder {
+            polls: Rc::clone(&polls),
+            wake_once: true,
+        });
         assert_eq!(*polls.borrow(), 1, "mount polls once");
         driver.drain();
-        assert_eq!(*polls.borrow(), 2, "the self-wake re-polled it exactly once");
+        assert_eq!(
+            *polls.borrow(),
+            2,
+            "the self-wake re-polled it exactly once"
+        );
         driver.remove(id);
         driver.drain();
         assert_eq!(*polls.borrow(), 2, "a removed slot is never polled again");
@@ -172,6 +192,9 @@ mod tests {
         let mut driver: LiveDriver<Done> = LiveDriver::new();
         driver.mount(Done);
         driver.drain();
-        assert!(driver.slots.is_empty(), "a root that completed is reclaimed");
+        assert!(
+            driver.slots.is_empty(),
+            "a root that completed is reclaimed"
+        );
     }
 }

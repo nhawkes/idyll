@@ -45,8 +45,11 @@ where
         // No observers depend on an effect, so "changed" is immaterial.
         false
     });
-    let cell =
-        Rc::new(SignalCell::build(rt, (), Rc::new(NodeCore::derived(recompute, Some(lane)))));
+    let cell = Rc::new(SignalCell::build(
+        rt,
+        (),
+        Rc::new(NodeCore::derived(recompute, Some(lane))),
+    ));
     graph::init_derived(&cell.node());
     cell
 }
@@ -70,7 +73,9 @@ impl Reaction {
         // would run the effect's initial paint once from a dead scope and then drop
         // it silently — check before the first run, not after.
         if owner.is_disposed() {
-            return Reaction { _cell: std::rc::Weak::new() };
+            return Reaction {
+                _cell: std::rc::Weak::new(),
+            };
         }
         let cell = build_effect(&owner.runtime(), lane, f);
         let handle = Reaction {

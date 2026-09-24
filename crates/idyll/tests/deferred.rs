@@ -20,7 +20,8 @@
 //! [`useDeferredValue`]: https://react.dev/reference/react/useDeferredValue
 
 use idyll::{
-    component::{report_to_log, spawn_live}, live_view, Ctx, MockDriver, Result, Runtime, Setup,
+    component::{report_to_log, spawn_live},
+    live_view, Ctx, MockDriver, Result, Runtime, Setup,
 };
 
 const CATALOG: &[&str] = &["apple", "apricot", "banana", "grape", "orange"];
@@ -51,15 +52,17 @@ async fn search(ctx: Ctx<Setup, Msg>) -> Result {
         |item: &String| item.clone(),
     );
 
-    let mut ctx = ctx.render(live_view! {
-        input value=($query) oninput=>(|e| Some(Msg::Query(e.value())))
-        p id=("echo") { ($deferred_query) }
-        ul id=("results") {
-            @for (_id, item) in $results {
-                li { ($item) }
+    let mut ctx = ctx
+        .render(live_view! {
+            input value=($query) oninput=>(|e| Some(Msg::Query(e.value())))
+            p id=("echo") { ($deferred_query) }
+            ul id=("results") {
+                @for (_id, item) in $results {
+                    li { ($item) }
+                }
             }
-        }
-    }).await?;
+        })
+        .await?;
 
     loop {
         let (msg, turn) = ctx.recv().await?;

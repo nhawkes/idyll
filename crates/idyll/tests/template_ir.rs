@@ -109,7 +109,11 @@ fn control_flow_is_an_anchor_node_and_rows_carry_their_own_ir() {
     // The row body is its own template with its own IR: a list fragment is data
     // plus a `Row` arm in the block's dispatch, and mounting a row registers the
     // row's template as its own unit.
-    let block = v.blocks.iter().find(|block| !block.fragments.is_empty()).expect("a list block");
+    let block = v
+        .blocks
+        .iter()
+        .find(|block| !block.fragments.is_empty())
+        .expect("a list block");
     assert!(matches!(
         block.fragments[0].kind,
         idyll::live_view::FragmentSource::Ready(idyll::live_view::FragmentKind::List { .. })
@@ -119,7 +123,9 @@ fn control_flow_is_an_anchor_node_and_rows_carry_their_own_ir() {
     let mut driver = idyll::MockDriver::new();
     let ctx = rt.ctx::<Msg>();
     rt.spawn(async move {
-        let _ = ctx.render(|_| async move { Ok::<_, idyll::Fault>(v) }).await;
+        let _ = ctx
+            .render(|_| async move { Ok::<_, idyll::Fault>(v) })
+            .await;
     });
     rt.run_once();
     rt.process_pending_view(&mut driver);
@@ -133,7 +139,10 @@ fn control_flow_is_an_anchor_node_and_rows_carry_their_own_ir() {
         TplNode::TextSlot(SlotId(0)),
     ];
     assert!(
-        driver.templates.iter().any(|template| template.nodes[..] == row_ir),
+        driver
+            .templates
+            .iter()
+            .any(|template| template.nodes[..] == row_ir),
         "the row's template registers as its own IR unit"
     );
 }
@@ -178,7 +187,10 @@ fn wrap_nests_the_whole_view_in_a_container() {
     let wrapped: LiveView<Msg> =
         build(live_view! { h1 { "T" } p { (label.clone()) } }).wrap("article");
 
-    assert_eq!(fold_of(wrapped), "<article><h1>T</h1><p>inner</p></article>");
+    assert_eq!(
+        fold_of(wrapped),
+        "<article><h1>T</h1><p>inner</p></article>"
+    );
 }
 
 /// The one serialization path, driven end to end: mount the view through a command

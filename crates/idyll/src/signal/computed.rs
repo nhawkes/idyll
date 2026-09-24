@@ -50,7 +50,9 @@ where
     let cell = Rc::new_cyclic(|weak: &Weak<SignalCell<T>>| {
         let weak = weak.clone();
         let recompute: Rc<dyn Fn(&Cx) -> bool> = Rc::new(move |cx: &Cx| {
-            let Some(cell) = weak.upgrade() else { return false };
+            let Some(cell) = weak.upgrade() else {
+                return false;
+            };
             let next = f(cx);
             let mut slot = cell.value().borrow_mut();
             if *slot == next {
@@ -163,7 +165,12 @@ mod tests {
         let parity = owner.computed(move |cx| if c2.get(cx) % 2 == 0 { "even" } else { "odd" });
         let c3 = count.read();
         let summary = owner.computed(move |cx| {
-            format!("{} is {}, doubled is {}", c3.get(cx), parity.get(cx), doubled.get(cx))
+            format!(
+                "{} is {}, doubled is {}",
+                c3.get(cx),
+                parity.get(cx),
+                doubled.get(cx)
+            )
         });
 
         let observed = Rc::new(RefCell::new(Vec::<String>::new()));
@@ -214,7 +221,11 @@ mod tests {
 
         inner.set(&Turn::mint(), 1);
         rt.run_pending_effects();
-        assert_eq!(runs.get(), 1, "nested computed's seed leaked an edge onto its creator");
+        assert_eq!(
+            runs.get(),
+            1,
+            "nested computed's seed leaked an edge onto its creator"
+        );
 
         outer.set(&Turn::mint(), 5);
         rt.run_pending_effects();

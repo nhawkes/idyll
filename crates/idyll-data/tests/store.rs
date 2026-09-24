@@ -24,7 +24,10 @@ impl idyll_data::RouteRoots for Roots {
 fn seed() -> Preloaded<Roots> {
     let mut seed = Seed::new();
     seed.push_raw("Post", serde_json::json!({ "id": 1, "title": "t" }));
-    Preloaded { seed, roots: Roots { post: 1 } }
+    Preloaded {
+        seed,
+        roots: Roots { post: 1 },
+    }
 }
 
 #[test]
@@ -41,7 +44,9 @@ fn a_root_mount_may_own_and_a_child_shares_the_provided_store() {
     let child: Ctx<Setup, ()> = Ctx::for_mount(&rt, Some(&provider.context_handle()));
     let shared = Store::of(&child, &seed()).expect("the provided store is in context");
     let turn = idyll::Turn::for_test();
-    provided.cache.upsert_json(&turn, "Post", serde_json::json!({ "id": 9, "title": "w" }));
+    provided
+        .cache
+        .upsert_json(&turn, "Post", serde_json::json!({ "id": 9, "title": "w" }));
     // Resolving through the child's handle sees the provider's write — one cache.
     let live = PostHead::resolve(&shared.cache, PostHead::key(9));
     assert_eq!(live.now(&turn).title, "w");

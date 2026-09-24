@@ -30,7 +30,11 @@ fn a_navigation_round_trips_as_intent_out_then_seed_driven_arm_swap() {
     let mut rt = Runtime::new();
     let mut driver = CommandBufferDriver::new();
     let ctx = rt.ctx::<Msg>();
-    rt.spawn(spawn_live(|ctx| app(ctx, boot), ctx, idyll::component::report_to_log));
+    rt.spawn(spawn_live(
+        |ctx| app(ctx, boot),
+        ctx,
+        idyll::component::report_to_log,
+    ));
     rt.run_once();
     rt.process_pending_view(&mut driver);
     rt.flush(&mut driver);
@@ -49,7 +53,12 @@ fn a_navigation_round_trips_as_intent_out_then_seed_driven_arm_swap() {
     // The intent arrives as an event whose value is the path…
     driver.dispatch_event(
         watch[0],
-        idyll::Event { target_value: Some("/about".into()), key: None, timestamp: None, rect: None },
+        idyll::Event {
+            target_value: Some("/about".into()),
+            key: None,
+            timestamp: None,
+            rect: None,
+        },
     );
     rt.run_to_quiescence();
     rt.flush(&mut driver);
@@ -59,7 +68,11 @@ fn a_navigation_round_trips_as_intent_out_then_seed_driven_arm_swap() {
     let request_id = commands
         .iter()
         .find_map(|c| match c {
-            DomCommand::Navigate { request_id, op, path } => {
+            DomCommand::Navigate {
+                request_id,
+                op,
+                path,
+            } => {
                 assert_eq!(*op, RouteQuery::op_hash());
                 assert_eq!(path, "/about");
                 Some(*request_id)
@@ -76,13 +89,18 @@ fn a_navigation_round_trips_as_intent_out_then_seed_driven_arm_swap() {
     rt.flush(&mut driver);
     let commands = driver.take_commands();
 
-    let swapped = commands.iter().any(|c| matches!(
-        c,
-        DomCommand::ReplaceTemplate { template, .. }
-            if template.nodes.iter().any(|n| matches!(
-                n,
-                idyll::template::TplNode::Text(t) if t.contains("One live owns this page")
-            ))
-    ));
-    assert!(swapped, "the About arm must mount from the replayed data: {commands:?}");
+    let swapped = commands.iter().any(|c| {
+        matches!(
+            c,
+            DomCommand::ReplaceTemplate { template, .. }
+                if template.nodes.iter().any(|n| matches!(
+                    n,
+                    idyll::template::TplNode::Text(t) if t.contains("One live owns this page")
+                ))
+        )
+    });
+    assert!(
+        swapped,
+        "the About arm must mount from the replayed data: {commands:?}"
+    );
 }

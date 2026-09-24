@@ -94,7 +94,10 @@ fn split_in_process(
     assigned: &[Vec<u32>],
 ) -> Result<(Vec<u8>, Vec<(String, Vec<u8>)>)> {
     let (primary, chunks) = crate::split_emit::split(core, assigned)?;
-    let named = chunks.into_iter().map(|(live_idx, bytes)| (live[live_idx].clone(), bytes)).collect();
+    let named = chunks
+        .into_iter()
+        .map(|(live_idx, bytes)| (live[live_idx].clone(), bytes))
+        .collect();
     Ok((primary, named))
 }
 
@@ -106,18 +109,25 @@ fn plan(core: &[u8], live: &[String]) -> Result<Vec<Vec<u32>>> {
 
     let entry_seeds: Vec<Vec<u32>> = (0..live.len())
         .map(|entry| {
-            [idyll_schema::live_root_export(entry), idyll_schema::live_make_export(entry)]
-                .iter()
-                .map(|export| {
-                    module.func_exports.get(export.as_str()).copied().with_context(|| {
+            [
+                idyll_schema::live_root_export(entry),
+                idyll_schema::live_make_export(entry),
+            ]
+            .iter()
+            .map(|export| {
+                module
+                    .func_exports
+                    .get(export.as_str())
+                    .copied()
+                    .with_context(|| {
                         format!(
                             "core module does not export `{export}` for live `{}` — \
                              app built by a `guest!` that predates declared live exports?",
                             live[entry]
                         )
                     })
-                })
-                .collect::<Result<Vec<u32>>>()
+            })
+            .collect::<Result<Vec<u32>>>()
         })
         .collect::<Result<_>>()?;
 
@@ -152,8 +162,9 @@ fn plan(core: &[u8], live: &[String]) -> Result<Vec<Vec<u32>>> {
         if always.contains(&Node::Func(index)) {
             continue;
         }
-        let owners: Vec<usize> =
-            (0..live.len()).filter(|&i| reach[i].contains(&Node::Func(index))).collect();
+        let owners: Vec<usize> = (0..live.len())
+            .filter(|&i| reach[i].contains(&Node::Func(index)))
+            .collect();
         if owners.len() != 1 {
             continue; // shared across entries
         }
@@ -381,17 +392,14 @@ impl Analysis {
                     let mut calls = Vec::new();
                     let mut ref_funcs = Vec::new();
                     let mut global_gets = Vec::new();
-                    let mut reader =
-                        body.get_operators_reader().context("reading a function body")?;
+                    let mut reader = body
+                        .get_operators_reader()
+                        .context("reading a function body")?;
                     while !reader.eof() {
                         match reader.read().context("decoding an operator")? {
                             Operator::Call { function_index }
-                            | Operator::ReturnCall { function_index } => {
-                                calls.push(function_index)
-                            }
-                            Operator::RefFunc { function_index } => {
-                                ref_funcs.push(function_index)
-                            }
+                            | Operator::ReturnCall { function_index } => calls.push(function_index),
+                            Operator::RefFunc { function_index } => ref_funcs.push(function_index),
                             // A `global.get` is a taking site when the global holds a table slot
                             // (PIC function pointer) — resolved against the globals below.
                             Operator::GlobalGet { global_index } => global_gets.push(global_index),
@@ -510,9 +518,16 @@ impl Analysis {
         // reachability, which here means a trap, not just bytes.
         let mut intervals: Vec<(Range<usize>, u32)> = Vec::new(); // (absolute bytes, symbol)
         for (id, symbol) in symbols.iter().enumerate() {
-            if let SymbolInfo::Data { symbol: Some(def), .. } = symbol {
+            if let SymbolInfo::Data {
+                symbol: Some(def), ..
+            } = symbol
+            {
                 let segment = segments.get(def.index as usize).with_context(|| {
-                    format!("data symbol {id} names segment {} of {}", def.index, segments.len())
+                    format!(
+                        "data symbol {id} names segment {} of {}",
+                        def.index,
+                        segments.len()
+                    )
                 })?;
                 let at = segment.start + def.offset as usize;
                 intervals.push((at..at + def.size as usize, id as u32));
@@ -567,9 +582,12 @@ impl Analysis {
             let Some(SymbolInfo::Data { name, .. }) = symbol else {
                 bail!("memory-address relocation names a non-data symbol: {symbol:?}");
             };
-            object_of_symbol.get(&entry.index).copied().with_context(|| {
-                format!("memory-address relocation names undefined data symbol `{name}`")
-            })
+            object_of_symbol
+                .get(&entry.index)
+                .copied()
+                .with_context(|| {
+                    format!("memory-address relocation names undefined data symbol `{name}`")
+                })
         };
 
         for (target, entries) in &relocs {
@@ -608,10 +626,9 @@ impl Analysis {
                         }
                         TypeIndexLeb | GlobalIndexLeb | GlobalIndexI32 | TableNumberLeb
                         | EventIndexLeb | FunctionIndexI32 => {}
-                        FunctionOffsetI32 | FunctionOffsetI64 | SectionOffsetI32 => bail!(
-                            "unexpected {:?} relocation in the code section",
-                            entry.ty
-                        ),
+                        FunctionOffsetI32 | FunctionOffsetI64 | SectionOffsetI32 => {
+                            bail!("unexpected {:?} relocation in the code section", entry.ty)
+                        }
                     }
                 }
             } else if let Some((_, data_base)) = data.filter(|(ordinal, _)| ordinal == target) {
@@ -679,7 +696,13 @@ impl Analysis {
             );
         }
 
-        Ok(Analysis { calls, refs, object_refs, func_exports, start })
+        Ok(Analysis {
+            calls,
+            refs,
+            object_refs,
+            func_exports,
+            start,
+        })
     }
 }
 
@@ -749,7 +772,9 @@ mod tests {
     /// encodings refuse, in both profiles.
     #[test]
     fn an_overlong_leb128_is_refused_not_truncated() {
-        let overlong = [0x80u8, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01];
+        let overlong = [
+            0x80u8, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01,
+        ];
         assert!(leb128(&overlong, 0).is_err());
         // The widest valid u64: nine full bytes and a tenth carrying only bit 0.
         let max = [0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01];
@@ -829,7 +854,11 @@ mod tests {
     fn fixture_wat(cover: bool) -> Vec<u8> {
         // The GOT global (immutable `i32` = slot 2 = `$untaken`) and the `global.get` that reads
         // it. Deliberately anonymous — the model keys on the value→slot mapping, never the name.
-        let got = if cover { "(global i32 (i32.const 2))" } else { "" };
+        let got = if cover {
+            "(global i32 (i32.const 2))"
+        } else {
+            ""
+        };
         let helper = if cover {
             "(func $shared_helper (call $log) (global.get 0) (drop))"
         } else {
@@ -1018,7 +1047,11 @@ mod tests {
     const FUNCTION_INDEX_LEB: u8 = 0;
 
     fn index_of(names: &[(u32, String)], want: &str) -> u32 {
-        names.iter().find(|(_, n)| n == want).map(|(i, _)| *i).unwrap_or_else(|| panic!("{want}"))
+        names
+            .iter()
+            .find(|(_, n)| n == want)
+            .map(|(i, _)| *i)
+            .unwrap_or_else(|| panic!("{want}"))
     }
 
     fn live() -> Vec<String> {
@@ -1054,7 +1087,12 @@ mod tests {
             "reloc.CODE",
             l.code_ordinal,
             &[
-                Reloc(MEMORY_ADDR_SLEB, a_only as u32, vtable_sym_for_code, Some(0)),
+                Reloc(
+                    MEMORY_ADDR_SLEB,
+                    a_only as u32,
+                    vtable_sym_for_code,
+                    Some(0),
+                ),
                 Reloc(TABLE_INDEX_SLEB, a_only as u32, 1, None),
                 Reloc(TABLE_INDEX_SLEB, b_only as u32, 1, None),
             ],
@@ -1081,12 +1119,23 @@ mod tests {
     #[test]
     fn islands_own_their_exclusive_closures() {
         let assigned = assigned_names(&fixture(2));
-        assert_eq!(assigned[0], Vec::<String>::new(), "the page is the document");
+        assert_eq!(
+            assigned[0],
+            Vec::<String>::new(),
+            "the page is the document"
+        );
         assert_eq!(
             assigned[1],
-            ["a_only", "a_leaf", "vt_method", "vt_callee", "body_ref", "body_ref_callee"]
-                .map(String::from)
-                .to_vec(),
+            [
+                "a_only",
+                "a_leaf",
+                "vt_method",
+                "vt_callee",
+                "body_ref",
+                "body_ref_callee"
+            ]
+            .map(String::from)
+            .to_vec(),
             "live a: its call chain, the vtable's methods, and the body ref.func chain"
         );
         assert_eq!(assigned[2], vec!["b_only".to_string()]);
@@ -1099,7 +1148,13 @@ mod tests {
         // function-pointer model attributes it to the always-loaded surface. Both stay primary,
         // now for a modelled reason, not a blanket concession.
         let all: Vec<String> = assigned_names(&fixture(2)).into_iter().flatten().collect();
-        for kept in ["shared_target", "shared_helper", "untaken", "untaken_callee", "mount"] {
+        for kept in [
+            "shared_target",
+            "shared_helper",
+            "untaken",
+            "untaken_callee",
+            "mount",
+        ] {
             assert!(!all.contains(&kept.to_string()), "{kept} must stay primary");
         }
     }
@@ -1109,7 +1164,9 @@ mod tests {
         // Same fixture, but `$untaken`'s GOT global and its `global.get` are gone: nothing
         // materialises its pointer. The old code kept it always-loaded; completeness demands we
         // refuse rather than trust an enumeration we cannot certify.
-        let err = plan(&fixture_cover(2, false), &live()).unwrap_err().to_string();
+        let err = plan(&fixture_cover(2, false), &live())
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("no visible taking site"), "{err}");
     }
 
@@ -1130,10 +1187,9 @@ mod tests {
     #[test]
     fn a_growable_table_is_refused() {
         // No maximum ⇒ the table may grow at runtime into slots the analysis never saw.
-        let wat = wat::parse_str(
-            r#"(module (table 1 funcref) (func $f) (export "mount" (func $f)))"#,
-        )
-        .expect("assembles");
+        let wat =
+            wat::parse_str(r#"(module (table 1 funcref) (func $f) (export "mount" (func $f)))"#)
+                .expect("assembles");
         let err = Analysis::read(&wat).err().expect("refused").to_string();
         assert!(err.contains("growable table"), "{err}");
     }
@@ -1183,7 +1239,10 @@ mod tests {
         let mut wasm = fixture_wat(true);
         let names = function_names(&wasm).expect("names");
         let l = layout(&wasm);
-        wasm.extend(linking(&[func_sym(index_of(&names, "vt_method"), "vt_method")]));
+        wasm.extend(linking(&[func_sym(
+            index_of(&names, "vt_method"),
+            "vt_method",
+        )]));
         let site = (l.bodies[0].start - l.code_base) as u32;
         wasm.extend(reloc_section(
             "reloc.CODE",
@@ -1199,8 +1258,14 @@ mod tests {
         let full = fixture(2);
         let stripped = strip_link_sections(&full).expect("strip");
         assert!(stripped.len() < full.len());
-        let err = Analysis::read(&stripped).err().expect("stripped module refuses").to_string();
-        assert!(err.contains("--emit-relocs"), "stripped module has no reloc sections");
+        let err = Analysis::read(&stripped)
+            .err()
+            .expect("stripped module refuses")
+            .to_string();
+        assert!(
+            err.contains("--emit-relocs"),
+            "stripped module has no reloc sections"
+        );
         assert_eq!(
             function_names(&stripped).expect("names survive"),
             function_names(&full).expect("names")
@@ -1219,7 +1284,11 @@ mod tests {
             .expect("the primary validates");
         // Lives `a` and `b` own exclusive code; the document `page` does not.
         let names: Vec<&str> = chunks.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["a", "b"], "one chunk per live with exclusive functions");
+        assert_eq!(
+            names,
+            ["a", "b"],
+            "one chunk per live with exclusive functions"
+        );
         for (name, bytes) in &chunks {
             wasmparser::Validator::new()
                 .validate_all(bytes)

@@ -53,7 +53,9 @@ pub struct SlotGuard {
 
 impl SlotGuard {
     pub(crate) fn new(on_remove: impl FnOnce() + 'static) -> Self {
-        SlotGuard { on_remove: Some(Box::new(on_remove)) }
+        SlotGuard {
+            on_remove: Some(Box::new(on_remove)),
+        }
     }
 }
 
@@ -67,8 +69,8 @@ impl Drop for SlotGuard {
 
 #[cfg(test)]
 mod tests {
-    use crate::{component, live_view, Ctx, MockDriver, Result, Runtime, Setup};
     use crate::component::{report_to_log, spawn_live};
+    use crate::{component, live_view, Ctx, MockDriver, Result, Runtime, Setup};
 
     /// The primitive end to end: a slot whose recipe embeds a child component renders its
     /// instance at the placement's anchor, and that embedded child mounts — proving the instance
@@ -87,9 +89,10 @@ mod tests {
             let slot = ctx.slot(|scope| (live_view! { div { Inner } })(scope));
             let mut ctx = ctx
                 .render(move |_| async move {
-                    let anchored = crate::LiveView::new(vec![
-                        crate::template::TplNode::AnchorSlot(crate::driver::SlotId(0)),
-                    ]);
+                    let anchored =
+                        crate::LiveView::new(vec![crate::template::TplNode::AnchorSlot(
+                            crate::driver::SlotId(0),
+                        )]);
                     Ok(anchored.place(0, slot))
                 })
                 .await?;
@@ -124,7 +127,10 @@ mod tests {
 
         #[component]
         async fn ShowTheme(ctx: Ctx<Setup, crate::Never>) -> Result {
-            let theme = ctx.use_context::<Theme>().map(|t| t.0).unwrap_or("unthemed");
+            let theme = ctx
+                .use_context::<Theme>()
+                .map(|t| t.0)
+                .unwrap_or("unthemed");
             Ok(ctx.render(live_view! { span { (theme) } }).await?)
         }
 

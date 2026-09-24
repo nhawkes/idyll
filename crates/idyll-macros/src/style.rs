@@ -77,7 +77,9 @@ fn expand_module(mut module: syn::ItemMod) -> Result<TokenStream2> {
             *item = syn::Item::Verbatim(emit_keyframes(&frames));
             continue;
         }
-        let syn::Item::Const(item) = item else { continue };
+        let syn::Item::Const(item) = item else {
+            continue;
+        };
         let Some(body) = parse::css_macro(item).map(|mac| mac.tokens.clone()) else {
             continue;
         };
@@ -140,17 +142,20 @@ fn emit_themes(themes: &[parse::Theme]) -> TokenStream2 {
         // A remap names neither kind: `same_kind` unifies the two handles, so the
         // check holds without the macro knowing the group's fields.
         let group = format_ident!("{}", theme.group);
-        let remaps = theme.remaps.iter().map(|(field, source_group, source_field)| {
-            let field = format_ident!("{field}");
-            let source_group = format_ident!("{source_group}");
-            let source_field = format_ident!("{source_field}");
-            quote! {
-                const _: () = ::idyll_styles::same_kind(
-                    #group::#field,
-                    #source_group::#source_field,
-                );
-            }
-        });
+        let remaps = theme
+            .remaps
+            .iter()
+            .map(|(field, source_group, source_field)| {
+                let field = format_ident!("{field}");
+                let source_group = format_ident!("{source_group}");
+                let source_field = format_ident!("{source_field}");
+                quote! {
+                    const _: () = ::idyll_styles::same_kind(
+                        #group::#field,
+                        #source_group::#source_field,
+                    );
+                }
+            });
         let atoms = theme.atoms.iter().map(|atom| {
             let class = &atom.class;
             let property = atom.property.css();
@@ -182,14 +187,17 @@ fn emit_themes(themes: &[parse::Theme]) -> TokenStream2 {
 /// reaches the sheet through the extracted style table, and no Rust names it (there
 /// is no element to put a class on).
 fn emit_document(rules: &[parse::DocumentRule]) -> TokenStream2 {
-    let asserts = rules.iter().flat_map(|rule| &rule.var_refs).map(|(group, field, kind)| {
-        let group = format_ident!("{group}");
-        let field = format_ident!("{field}");
-        let kind = format_ident!("{}", kind.marker());
-        quote! {
-            const _: ::idyll_styles::Var<::idyll_styles::kind::#kind> = #group::#field;
-        }
-    });
+    let asserts = rules
+        .iter()
+        .flat_map(|rule| &rule.var_refs)
+        .map(|(group, field, kind)| {
+            let group = format_ident!("{group}");
+            let field = format_ident!("{field}");
+            let kind = format_ident!("{}", kind.marker());
+            quote! {
+                const _: ::idyll_styles::Var<::idyll_styles::kind::#kind> = #group::#field;
+            }
+        });
     quote! { #(#asserts)* }
 }
 
@@ -262,8 +270,10 @@ fn emit_style(atoms: &[parse::Atom]) -> TokenStream2 {
 
     // A theme's declarations are custom properties: outside the table, so they carry
     // no marker and constrain nothing.
-    let markers: std::collections::BTreeSet<&str> =
-        atoms.iter().filter_map(|atom| atom.property.marker()).collect();
+    let markers: std::collections::BTreeSet<&str> = atoms
+        .iter()
+        .filter_map(|atom| atom.property.marker())
+        .collect();
     let requires = markers.iter().map(|marker| {
         let marker = format_ident!("{marker}");
         quote! { .requires::<::idyll_styles::props::#marker>() }
@@ -273,14 +283,17 @@ fn emit_style(atoms: &[parse::Atom]) -> TokenStream2 {
     // property demands, so the reference is a navigable Rust item and a mis-kinded
     // var (a length token in a color property) is a compile error at its span.
     let var_asserts =
-        atoms.iter().flat_map(|atom| atom.var_refs.iter()).map(|(group, field, kind)| {
-            let group = format_ident!("{group}");
-            let field = format_ident!("{field}");
-            let kind = format_ident!("{}", kind.marker());
-            quote! {
-                const _: ::idyll_styles::Var<::idyll_styles::kind::#kind> = #group::#field;
-            }
-        });
+        atoms
+            .iter()
+            .flat_map(|atom| atom.var_refs.iter())
+            .map(|(group, field, kind)| {
+                let group = format_ident!("{group}");
+                let field = format_ident!("{field}");
+                let kind = format_ident!("{}", kind.marker());
+                quote! {
+                    const _: ::idyll_styles::Var<::idyll_styles::kind::#kind> = #group::#field;
+                }
+            });
 
     quote! {{
         #(#var_asserts)*

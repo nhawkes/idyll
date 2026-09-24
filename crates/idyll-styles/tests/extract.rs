@@ -23,8 +23,12 @@ fn fixture_root() -> SourceRoot {
 fn extractor_and_macro_agree_on_classes_and_rule_text() {
     let root = fixture_root();
     let mut table = StyleTable::default();
-    extract::file(&root, &root.manifest_dir.join("tests/fixtures/agreement.rs"), &mut table)
-        .expect("fixture extracts");
+    extract::file(
+        &root,
+        &root.manifest_dir.join("tests/fixtures/agreement.rs"),
+        &mut table,
+    )
+    .expect("fixture extracts");
 
     let atoms: Vec<_> = fixture::styles::BANNER
         .atoms()
@@ -51,18 +55,30 @@ fn extractor_and_macro_agree_on_classes_and_rule_text() {
     // reads `var(--…)` — the value never left the stylesheet.
     let ink = fixture::styles::Palette::ink;
     let _typed: idyll_styles::Var<idyll_styles::kind::Color> = ink;
-    let prefix = ink.name.strip_prefix("--").unwrap().split('-').next().unwrap();
+    let prefix = ink
+        .name
+        .strip_prefix("--")
+        .unwrap()
+        .split('-')
+        .next()
+        .unwrap();
     let group_rule = table
         .resolve(&format!("{prefix}-palette"))
         .expect("the group's :root rule is in the table");
     assert!(group_rule.starts_with(":root{"), "{group_rule}");
-    assert!(group_rule.contains(&format!("{}:#1c1e21;", ink.name)), "{group_rule}");
+    assert!(
+        group_rule.contains(&format!("{}:#1c1e21;", ink.name)),
+        "{group_rule}"
+    );
     assert!(
         group_rule.contains(&format!("dark){{:root{{{}:#e6e8ea;", ink.name)),
         "{group_rule}"
     );
     let inked = fixture::styles::INKED.atoms();
-    assert_eq!(inked[0].rule, format!(".{}{{color:var({})}}", inked[0].class, ink.name));
+    assert_eq!(
+        inked[0].rule,
+        format!(".{}{{color:var({})}}", inked[0].class, ink.name)
+    );
 
     // The non-color kinds: each handle compiles at its shape's kind, and the group
     // rule carries the raw values.
@@ -73,11 +89,18 @@ fn extractor_and_macro_agree_on_classes_and_rule_text() {
     let metrics_rule = table
         .resolve(&format!("{prefix}-metrics"))
         .expect("the metrics group's :root rule is in the table");
-    assert!(metrics_rule.contains(&format!("{}:32px;", control.name)), "{metrics_rule}");
+    assert!(
+        metrics_rule.contains(&format!("{}:32px;", control.name)),
+        "{metrics_rule}"
+    );
 
     // The document rules: nothing in Rust names them (there is no element to put a
     // class on), so the extractor is their ONLY path to the sheet.
-    let file_prefix = atoms[0].class.split('-').next().expect("class carries its file prefix");
+    let file_prefix = atoms[0]
+        .class
+        .split('-')
+        .next()
+        .expect("class carries its file prefix");
     assert_eq!(
         table.resolve(&format!("{file_prefix}-document-root")),
         Some(":root{color-scheme:light dark}"),
@@ -98,11 +121,23 @@ fn extractor_and_macro_agree_on_classes_and_rule_text() {
     // one element resolve by the same last-wins merge rather than by rule order. A
     // remap emits a `var()` reference — the colour keeps one definition.
     let inverted = fixture::styles::Inverted.atoms();
-    let ink_atom = inverted.iter().find(|a| a.class.ends_with("-palette-ink")).expect("ink override");
-    assert_eq!(ink_atom.rule, format!(".{}{{{}:#ffffff}}", ink_atom.class, ink.name));
-    let accent_atom =
-        inverted.iter().find(|a| a.class.ends_with("-palette-accent")).expect("accent remap");
-    assert!(accent_atom.rule.ends_with(&format!(":var({})}}", ink.name)), "{}", accent_atom.rule);
+    let ink_atom = inverted
+        .iter()
+        .find(|a| a.class.ends_with("-palette-ink"))
+        .expect("ink override");
+    assert_eq!(
+        ink_atom.rule,
+        format!(".{}{{{}:#ffffff}}", ink_atom.class, ink.name)
+    );
+    let accent_atom = inverted
+        .iter()
+        .find(|a| a.class.ends_with("-palette-accent"))
+        .expect("accent remap");
+    assert!(
+        accent_atom.rule.ends_with(&format!(":var({})}}", ink.name)),
+        "{}",
+        accent_atom.rule
+    );
 
     // …and the extractor found nothing the compiled consts don't have (the extra
     // rules are the two var groups' and the two document rules').
@@ -113,9 +148,12 @@ fn extractor_and_macro_agree_on_classes_and_rule_text() {
 fn a_nested_styles_module_is_rejected() {
     let root = fixture_root();
     let mut table = StyleTable::default();
-    let error =
-        extract::file(&root, &root.manifest_dir.join("tests/fixtures/nested.rs"), &mut table)
-            .expect_err("nested module rejected");
+    let error = extract::file(
+        &root,
+        &root.manifest_dir.join("tests/fixtures/nested.rs"),
+        &mut table,
+    )
+    .expect_err("nested module rejected");
     assert!(error.to_string().contains("top of the file"), "{error}");
 }
 
@@ -128,9 +166,18 @@ fn the_universe_is_the_app_crates_workspace_closure() {
     let universe = extract::universe(&roots, "todo-app").expect("todo-app is a member");
 
     assert!(universe.contains("todo-app"));
-    assert!(universe.contains("idyll-styles"), "workspace deps close transitively");
-    assert!(!universe.contains("todo-spa-app"), "a sibling app is out of the universe");
-    assert!(!universe.contains("todo-server"), "dependents don't enter the closure");
+    assert!(
+        universe.contains("idyll-styles"),
+        "workspace deps close transitively"
+    );
+    assert!(
+        !universe.contains("todo-spa-app"),
+        "a sibling app is out of the universe"
+    );
+    assert!(
+        !universe.contains("todo-server"),
+        "dependents don't enter the closure"
+    );
 
     assert!(extract::universe(&roots, "no-such-crate").is_err());
 }

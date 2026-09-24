@@ -5,7 +5,7 @@
 //! component paints on the server and hydrates in the browser; the server crate is
 //! data and infra.
 
-use idyll::{view, live_view, Ctx, Never, Setup};
+use idyll::{live_view, view, Ctx, Never, Setup};
 
 pub mod atoms;
 use idyll_data::{fragment, query, Frag, Preloaded, Store};
@@ -28,40 +28,48 @@ pub async fn page(ctx: Ctx<Setup, Never>, seed: PageSeed) -> idyll::Result {
     let store = Store::of(&ctx, &seed)?;
     let live = PageFrag::read(&store.cache, store.page).await;
     match live.at_mount(&ctx).route {
-        PageFragRoute::Todos { .. } => Ok(ctx.render_content(view! {
-            div id=("app") css=[atoms::styles::PAGE] {
-                h1 css=[atoms::styles::TITLE] { "Todos" }
-                live::Board()
-                p { a id=("to-prose") href=("/prose") { "Prose gauntlet" } }
-            }
-        }).await?),
-        PageFragRoute::Prose {} => Ok(ctx.render_content(view! {
-            main css=[atoms::styles::PAGE] {
-                h1 { "Prose" }
-                live::Prose()
-                p { a id=("to-todos") href=("/") { "Back to todos" } }
-            }
-        }).await?),
+        PageFragRoute::Todos { .. } => Ok(ctx
+            .render_content(view! {
+                div id=("app") css=[atoms::styles::PAGE] {
+                    h1 css=[atoms::styles::TITLE] { "Todos" }
+                    live::Board()
+                    p { a id=("to-prose") href=("/prose") { "Prose gauntlet" } }
+                }
+            })
+            .await?),
+        PageFragRoute::Prose {} => Ok(ctx
+            .render_content(view! {
+                main css=[atoms::styles::PAGE] {
+                    h1 { "Prose" }
+                    live::Prose()
+                    p { a id=("to-todos") href=("/") { "Back to todos" } }
+                }
+            })
+            .await?),
     }
 }
 
 /// The document-head content the app contributes. The `<title>` is a contract field
 /// on the page node — the host writes it into the envelope, not the view.
 pub async fn head(ctx: Ctx<Setup, Never>, _seed: PageSeed) -> idyll::Result {
-    Ok(ctx.render_content(view! {
-        meta charset=("utf-8")
-        meta name=("viewport") content=("width=device-width, initial-scale=1")
-    }).await?)
+    Ok(ctx
+        .render_content(view! {
+            meta charset=("utf-8")
+            meta name=("viewport") content=("width=device-width, initial-scale=1")
+        })
+        .await?)
 }
 
 /// The store-root live: owns the page's store, provides it through context, and
 /// declares the live that share it.
 pub async fn board(ctx: Ctx<Setup, Never>, seed: PageSeed) -> idyll::Result {
     Store::provide(&ctx, &seed)?;
-    Ok(ctx.render(live_view! {
-        @live(live::Badge)
-        @live(live::Todos)
-    }).await?)
+    Ok(ctx
+        .render(live_view! {
+            @live(live::Badge)
+            @live(live::Todos)
+        })
+        .await?)
 }
 
 /// The todo edge, wherever the route put it — a page without todos simply has none.
@@ -76,11 +84,13 @@ fn todos_of(route: &PageFragRoute) -> &[Frag<TodoItem>] {
 pub async fn badge(ctx: Ctx<Setup, Never>, seed: PageSeed) -> idyll::Result {
     let store = Store::of(&ctx, &seed)?;
     let live = PageFrag::read(&store.cache, store.page).await;
-    Ok(ctx.render(live_view! {
-        p id=("badge") css=[atoms::styles::BADGE] {
-            (todos_of(&$live.route).len().to_string()) " todos"
-        }
-    }).await?)
+    Ok(ctx
+        .render(live_view! {
+            p id=("badge") css=[atoms::styles::BADGE] {
+                (todos_of(&$live.route).len().to_string()) " todos"
+            }
+        })
+        .await?)
 }
 
 #[derive(Debug)]
@@ -142,24 +152,26 @@ pub async fn todos(ctx: Ctx<Setup, Msg>, seed: PageSeed) -> idyll::Result {
     use crate::atoms::button::{Button, ButtonKind};
     use crate::atoms::input::TextInput;
     use crate::atoms::toast::Toast;
-    let mut ctx = ctx.render(live_view! {
-        div css=[styles::ADD] {
-            label css=[styles::FIELD] {
-                span css=[styles::LABEL] { "New todo" }
-                TextInput name=("todo") placeholder=("What needs doing?") value=(draft)
-                    typed=>(|text| Msg::Draft(text))
+    let mut ctx = ctx
+        .render(live_view! {
+            div css=[styles::ADD] {
+                label css=[styles::FIELD] {
+                    span css=[styles::LABEL] { "New todo" }
+                    TextInput name=("todo") placeholder=("What needs doing?") value=(draft)
+                        typed=>(|text| Msg::Draft(text))
+                }
+                Button kind=(ButtonKind::Primary) label=("Add todo") pressed=>(|_| Msg::Add)
             }
-            Button kind=(ButtonKind::Primary) label=("Add todo") pressed=>(|_| Msg::Add)
-        }
-        Toast notice=(notice) dismissed=>(|_| Msg::Dismiss)
-        ul id=("todos") css=[styles::LIST] {
-            @for (_id, item) in $items {
-                li css=[styles::ITEM, $item.done => styles::DONE] {
-                    ($item.text)
+            Toast notice=(notice) dismissed=>(|_| Msg::Dismiss)
+            ul id=("todos") css=[styles::LIST] {
+                @for (_id, item) in $items {
+                    li css=[styles::ITEM, $item.done => styles::DONE] {
+                        ($item.text)
+                    }
                 }
             }
-        }
-    }).await?;
+        })
+        .await?;
     loop {
         let (msg, turn) = ctx.recv().await?;
         match msg {
@@ -200,28 +212,30 @@ pub async fn prose(ctx: Ctx<Setup, ProseMsg>, _seed: PageSeed) -> idyll::Result 
     let order = ctx.mutable_signal(vec![1u32, 2, 3]);
     let show = ctx.mutable_signal(true);
     let words = ctx.mutable_signal(vec!["claim", "hydrate", "splice"]);
-    let mut ctx = ctx.render(live_view! {
-        p id=("counter") {
-            "You have clicked " $clicks " times — keep " "going" "!"
-        }
-        button id=("bump") onclick=>(|_| Some(ProseMsg::Bump)) { "Bump" }
-        div id=("report") {
-            @for w in $words [key = *w] {
-                span { $w }
+    let mut ctx = ctx
+        .render(live_view! {
+            p id=("counter") {
+                "You have clicked " $clicks " times — keep " "going" "!"
             }
-            p id=("after") { "That list has an afterword — the region is not the last child." }
-        }
-        button id=("reverse") onclick=>(|_| Some(ProseMsg::Reverse)) { "Reverse" }
-        ol id=("keyed") {
-            @for n in $order [key = *n] {
-                li { $n }
+            button id=("bump") onclick=>(|_| Some(ProseMsg::Bump)) { "Bump" }
+            div id=("report") {
+                @for w in $words [key = *w] {
+                    span { $w }
+                }
+                p id=("after") { "That list has an afterword — the region is not the last child." }
             }
-        }
-        button id=("toggle") onclick=>(|_| Some(ProseMsg::Toggle)) { "Toggle" }
-        @if[keep] ($show) {
-            p id=("kept") { "kept content" }
-        }
-    }).await?;
+            button id=("reverse") onclick=>(|_| Some(ProseMsg::Reverse)) { "Reverse" }
+            ol id=("keyed") {
+                @for n in $order [key = *n] {
+                    li { $n }
+                }
+            }
+            button id=("toggle") onclick=>(|_| Some(ProseMsg::Toggle)) { "Toggle" }
+            @if[keep] ($show) {
+                p id=("kept") { "kept content" }
+            }
+        })
+        .await?;
     loop {
         let (msg, turn) = ctx.recv().await?;
         match msg {
@@ -247,20 +261,22 @@ pub enum PlotMsg {
 /// `foreignObject` is here for the other direction: the subtree inside it is HTML again.
 pub async fn plot(ctx: Ctx<Setup, PlotMsg>, _seed: PageSeed) -> idyll::Result {
     let bars = ctx.mutable_signal(vec![10u32, 20, 30]);
-    let mut ctx = ctx.render(live_view! {
-        svg id=("plot") viewBox=("0 0 100 100") {
-            rect x=("0") y=("0") width=("100") height=("100") {}
-            @for h in $bars [key = *h] {
-                g { rect width=("8") height=($h.to_string()) {} }
-            }
-            foreignObject x=("0") y=("0") width=("40") height=("20") {
+    let mut ctx = ctx
+        .render(live_view! {
+            svg id=("plot") viewBox=("0 0 100 100") {
+                rect x=("0") y=("0") width=("100") height=("100") {}
                 @for h in $bars [key = *h] {
-                    span { $h }
+                    g { rect width=("8") height=($h.to_string()) {} }
+                }
+                foreignObject x=("0") y=("0") width=("40") height=("20") {
+                    @for h in $bars [key = *h] {
+                        span { $h }
+                    }
                 }
             }
-        }
-        button id=("grow") onclick=>(|_| Some(PlotMsg::Grow)) { "Grow" }
-    }).await?;
+            button id=("grow") onclick=>(|_| Some(PlotMsg::Grow)) { "Grow" }
+        })
+        .await?;
     loop {
         let (msg, turn) = ctx.recv().await?;
         match msg {
@@ -310,7 +326,7 @@ mod tests {
 
     #[test]
     fn the_todos_island_renders_the_same_content_as_a_command_stream() {
-                use idyll::{CommandBufferDriver, DomCommand, Runtime};
+        use idyll::{CommandBufferDriver, DomCommand, Runtime};
 
         // Drive the *same* live component through a command-buffer driver (what
         // runtime.js will apply in the browser). No wasm, no JS bindings — pure idyll.
@@ -329,10 +345,18 @@ mod tests {
 
         // The client render emits the same todo content the server rendered, as SetText…
         let text_of = |needle: &str| {
-            commands.iter().any(|c| matches!(c, DomCommand::SetText { text, .. } if text.contains(needle)))
+            commands
+                .iter()
+                .any(|c| matches!(c, DomCommand::SetText { text, .. } if text.contains(needle)))
         };
-        assert!(text_of("Learn idyll"), "live stream missing a todo: {commands:?}");
-        assert!(text_of("Render through the membrane"), "live stream missing a todo: {commands:?}");
+        assert!(
+            text_of("Learn idyll"),
+            "live stream missing a todo: {commands:?}"
+        );
+        assert!(
+            text_of("Render through the membrane"),
+            "live stream missing a todo: {commands:?}"
+        );
 
         // …and wires the Add button's click handler.
         assert!(

@@ -129,7 +129,10 @@ impl<V: SignalVec<L>, L: SignalVec<Shape>> Layers for Source<V, L> {
     fn layer(&self, row: Row) -> Option<Rc<dyn Shapes>> {
         let cell = self.source.read(row)?;
         let list = cell.peek().clone();
-        Some(Rc::new(Source::<L, Shape> { source: list, _item: std::marker::PhantomData }))
+        Some(Rc::new(Source::<L, Shape> {
+            source: list,
+            _item: std::marker::PhantomData,
+        }))
     }
 }
 
@@ -140,7 +143,10 @@ where
     V: SignalVec<L>,
     L: SignalVec<Shape>,
 {
-    Rc::new(Source::<V, L> { source, _item: std::marker::PhantomData })
+    Rc::new(Source::<V, L> {
+        source,
+        _item: std::marker::PhantomData,
+    })
 }
 
 // ── The flat wire form ──────────────────────────────────────────────────────────────
@@ -235,7 +241,9 @@ impl Painting {
     fn command(&mut self) -> Option<crate::driver::DomOp> {
         let mut deltas = Vec::new();
         for (index, row) in self.layers.iter().enumerate() {
-            let Some(layer) = self.of.get_mut(row) else { continue };
+            let Some(layer) = self.of.get_mut(row) else {
+                continue;
+            };
             let len = layer.order.len() as u32;
             if layer.moved.is_empty() && layer.sent == Some(len) {
                 continue;
@@ -250,14 +258,22 @@ impl Painting {
                 .collect();
             layer.moved.clear();
             layer.sent = Some(len);
-            deltas.push(LayerDelta { layer: index as u32, slots, len });
+            deltas.push(LayerDelta {
+                layer: index as u32,
+                slots,
+                len,
+            });
         }
         let layers = self.layers.len() as u32;
         if deltas.is_empty() && self.sent == Some(layers) {
             return None;
         }
         self.sent = Some(layers);
-        Some(crate::driver::DomOp::Paint { node_id: self.node_id, layers, deltas })
+        Some(crate::driver::DomOp::Paint {
+            node_id: self.node_id,
+            layers,
+            deltas,
+        })
     }
 }
 
@@ -270,7 +286,9 @@ fn queue(core: &Rc<RuntimeCore>, state: &Rc<RefCell<Painting>>) {
     }
     let state = Rc::downgrade(state);
     core.defer(Box::new(move |_runtime, driver| {
-        let Some(state) = state.upgrade() else { return Vec::new() };
+        let Some(state) = state.upgrade() else {
+            return Vec::new();
+        };
         let command = {
             let mut painting = state.borrow_mut();
             painting.queued = false;
@@ -295,17 +313,26 @@ fn follow_shape(
     let cell = state.borrow().of.get(&layer)?.shapes.read(shape)?;
     let marked = Rc::downgrade(state);
     let mark_core = Rc::downgrade(core);
-    Some(crate::signal::reaction::Reaction::spawn_guarded(core, move |cx| {
-        let _ = cell.get(cx);
-        let (Some(state), Some(core)) = (marked.upgrade(), mark_core.upgrade()) else { return };
-        {
-            let mut painting = state.borrow_mut();
-            let Some(entry) = painting.of.get_mut(&layer) else { return };
-            let Some(slot) = entry.order.get_index_of(&shape) else { return };
-            entry.moved.insert(slot as u32);
-        }
-        queue(&core, &state);
-    }))
+    Some(crate::signal::reaction::Reaction::spawn_guarded(
+        core,
+        move |cx| {
+            let _ = cell.get(cx);
+            let (Some(state), Some(core)) = (marked.upgrade(), mark_core.upgrade()) else {
+                return;
+            };
+            {
+                let mut painting = state.borrow_mut();
+                let Some(entry) = painting.of.get_mut(&layer) else {
+                    return;
+                };
+                let Some(slot) = entry.order.get_index_of(&shape) else {
+                    return;
+                };
+                entry.moved.insert(slot as u32);
+            }
+            queue(&core, &state);
+        },
+    ))
 }
 
 /// Bring one layer's rows level with its list: new shapes get an effect (which paints
@@ -315,7 +342,9 @@ fn follow_shape(
 fn resync_layer(core: &Rc<RuntimeCore>, state: &Rc<RefCell<Painting>>, layer: Row, cx: &Cx) {
     let (shapes, fresh, was) = {
         let painting = state.borrow();
-        let Some(entry) = painting.of.get(&layer) else { return };
+        let Some(entry) = painting.of.get(&layer) else {
+            return;
+        };
         entry.shapes.observe(cx);
         let spliced = !entry.consumer.drain().is_empty();
         if !spliced && entry.seeded {
@@ -326,7 +355,9 @@ fn resync_layer(core: &Rc<RuntimeCore>, state: &Rc<RefCell<Painting>>, layer: Ro
     };
     let arrived: Vec<Row> = {
         let mut painting = state.borrow_mut();
-        let Some(entry) = painting.of.get_mut(&layer) else { return };
+        let Some(entry) = painting.of.get_mut(&layer) else {
+            return;
+        };
         entry.shapes = shapes;
         entry.seeded = true;
         entry.effects.retain(|row, _| fresh.contains(row));
@@ -338,7 +369,11 @@ fn resync_layer(core: &Rc<RuntimeCore>, state: &Rc<RefCell<Painting>>, layer: Ro
                 entry.moved.insert(slot as u32);
             }
         }
-        let arrived = fresh.iter().filter(|row| !entry.effects.contains_key(row)).copied().collect();
+        let arrived = fresh
+            .iter()
+            .filter(|row| !entry.effects.contains_key(row))
+            .copied()
+            .collect();
         entry.order = fresh;
         arrived
     };
@@ -375,7 +410,9 @@ pub(crate) fn install(
     let effect_core = Rc::downgrade(core);
     let structure = Rc::clone(&state);
     crate::signal::reaction::Reaction::spawn_in(owner, move |cx| {
-        let Some(core) = effect_core.upgrade() else { return };
+        let Some(core) = effect_core.upgrade() else {
+            return;
+        };
         layers.observe(cx);
         let spliced = !consumer.drain().is_empty();
         // A layer's own splices reach this effect through the tracking `resync_layer`
@@ -392,7 +429,9 @@ pub(crate) fn install(
                 if painting.of.contains_key(&row) {
                     continue;
                 }
-                let Some(shapes) = layers.layer(row) else { continue };
+                let Some(shapes) = layers.layer(row) else {
+                    continue;
+                };
                 let consumer = shapes.consume();
                 painting.of.insert(
                     row,
@@ -422,7 +461,12 @@ mod tests {
 
     fn shape(ink: &str) -> Shape {
         Shape {
-            curve: Curve { from: (1.0, 2.0), c1: (3.0, 4.0), c2: (5.0, 6.0), to: (7.0, 8.0) },
+            curve: Curve {
+                from: (1.0, 2.0),
+                c1: (3.0, 4.0),
+                c2: (5.0, 6.0),
+                to: (7.0, 8.0),
+            },
             span: (0.25, 0.75),
             ink: ink.to_string(),
             width: 2.5,
@@ -440,7 +484,11 @@ mod tests {
                 slots: vec![(0, shape("var(--teal)")), (1, shape("var(--amber)"))],
                 len: 2,
             },
-            LayerDelta { layer: 1, slots: vec![(3, shape("var(--teal)"))], len: 4 },
+            LayerDelta {
+                layer: 1,
+                slots: vec![(3, shape("var(--teal)"))],
+                len: 4,
+            },
         ];
         let (inks, runs) = flatten(&deltas);
 
@@ -450,11 +498,14 @@ mod tests {
             runs[0].1[..STRIDE + 1],
             [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 0.25, 0.75, 2.5, 0.0, 0.9, 0.0]
         );
-        assert_eq!(runs[0].1[STRIDE + 1], 1.0, "the second shape names its own slot");
+        assert_eq!(
+            runs[0].1[STRIDE + 1],
+            1.0,
+            "the second shape names its own slot"
+        );
         assert_eq!(runs[1], (1, runs[1].1.clone(), 4));
         assert_eq!(
-            runs[1].1[STRIDE],
-            0.0,
+            runs[1].1[STRIDE], 0.0,
             "the second layer's shape reuses the first layer's ink",
         );
     }

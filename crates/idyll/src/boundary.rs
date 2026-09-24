@@ -107,8 +107,7 @@ pub async fn error_boundary<C: Component>(
     // The fallback's faults must route PAST this boundary (a fallback failing for
     // the child's reason must not vanish into the reducer's first-fault-won arm), so
     // its frame is captured from the enclosing route *before* the sink installs.
-    let fallback_frame =
-        crate::ctx::FaultRoute::from_frame(&frame.0).shadowing_frame(&frame.0);
+    let fallback_frame = crate::ctx::FaultRoute::from_frame(&frame.0).shadowing_frame(&frame.0);
     // Route the subtree's faults to this inbox. Every descendant mounted under this frame finds
     // this sink (until a nearer error boundary shadows it).
     ctx.fault_sink(Faulted::Fault);
@@ -135,7 +134,9 @@ pub async fn error_boundary<C: Component>(
         child_guard.borrow_mut().take();
         fallback_guard = Some(crate::spawn_child::<Fallback>(
             &fallback_frame,
-            FallbackRequired { recipe: fallback.build(fault) },
+            FallbackRequired {
+                recipe: fallback.build(fault),
+            },
             FallbackOptional::default(),
             fallback_id,
         ));
@@ -205,8 +206,10 @@ mod tests {
     //! Nesting is the property worth pinning: the failure/suspension is *two* levels
     //! down, and the boundary at the top still catches it.
     use crate::{
-        component, component::{report_to_log, spawn_live}, driver::DomOp, live_view, Ctx,
-        MockDriver, Never, Runtime, Setup,
+        component,
+        component::{report_to_log, spawn_live},
+        driver::DomOp,
+        live_view, Ctx, MockDriver, Never, Runtime, Setup,
     };
 
     /// Every text the driver saw: `SetText` writes (live splices) plus template `Text`
@@ -271,11 +274,17 @@ mod tests {
         #[component]
         async fn Slow(ctx: Ctx<Setup, idyll::Never>, gate: Gate) -> Result {
             gate.await;
-            ctx.render(live_view! { span { ("ready") } }).await?.finish().await
+            ctx.render(live_view! { span { ("ready") } })
+                .await?
+                .finish()
+                .await
         }
         #[component]
         async fn Middle(ctx: Ctx<Setup, idyll::Never>, gate: Gate) -> Result {
-            ctx.render(live_view! { div { Slow gate=(gate) } }).await?.finish().await
+            ctx.render(live_view! { div { Slow gate=(gate) } })
+                .await?
+                .finish()
+                .await
         }
 
         let gate = Gate::default();
@@ -308,9 +317,15 @@ mod tests {
             "the boundary must show its fallback while a descendant is pending: {:?}",
             all_texts(&driver)
         );
-        let removes_while_pending =
-            driver.log.iter().filter(|op| matches!(op, DomOp::RemoveFragment { .. })).count();
-        assert_eq!(removes_while_pending, 0, "the fallback stays mounted while the child is pending");
+        let removes_while_pending = driver
+            .log
+            .iter()
+            .filter(|op| matches!(op, DomOp::RemoveFragment { .. }))
+            .count();
+        assert_eq!(
+            removes_while_pending, 0,
+            "the fallback stays mounted while the child is pending"
+        );
 
         // Release the descendant: its whole subtree renders, and the fallback is torn down.
         gate.open();
@@ -323,8 +338,11 @@ mod tests {
         );
         // The one-shot swap: when the child's subtree renders, the fallback's DOM is *torn down* —
         // not hidden behind a still-live overlay. That teardown is the design's whole claim.
-        let removes_after_swap =
-            driver.log.iter().filter(|op| matches!(op, DomOp::RemoveFragment { .. })).count();
+        let removes_after_swap = driver
+            .log
+            .iter()
+            .filter(|op| matches!(op, DomOp::RemoveFragment { .. }))
+            .count();
         assert!(
             removes_after_swap > removes_while_pending,
             "the fallback's fragment must be removed once the child takes over: {:?}",
@@ -343,7 +361,10 @@ mod tests {
         }
         #[component]
         async fn Middle(ctx: Ctx<Setup, idyll::Never>) -> Result {
-            ctx.render(live_view! { div { Failing } }).await?.finish().await
+            ctx.render(live_view! { div { Failing } })
+                .await?
+                .finish()
+                .await
         }
 
         let mut rt = Runtime::new();
@@ -426,7 +447,9 @@ mod tests {
         rt.flush(&mut driver);
 
         assert!(
-            all_texts(&driver).iter().any(|text| text.contains("fallback-kaboom")),
+            all_texts(&driver)
+                .iter()
+                .any(|text| text.contains("fallback-kaboom")),
             "the fallback's own fault must surface at the outer boundary: {:?}",
             all_texts(&driver)
         );
@@ -483,7 +506,10 @@ mod tests {
             fold.apply(command);
         }
         let html = fold.html();
-        assert!(html.contains("fragile content"), "the child rendered: {html}");
+        assert!(
+            html.contains("fragile content"),
+            "the child rendered: {html}"
+        );
         assert!(!html.contains("fallback shown"), "no fault yet: {html}");
 
         sender_slot.borrow().as_ref().unwrap().send(Msg::Boom);
@@ -501,7 +527,10 @@ mod tests {
             !html.contains("fragile content"),
             "the failed subtree must unmount, not linger under an overlay: {html}"
         );
-        assert!(html.contains("fallback shown"), "the fallback takes its place: {html}");
+        assert!(
+            html.contains("fallback shown"),
+            "the fallback takes its place: {html}"
+        );
     }
 
     /// The division of labour between the two boundaries, which nothing else pins: a

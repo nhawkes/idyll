@@ -58,7 +58,10 @@ async fn posts(db: &Db) -> Result<Vec<RawPost>, std::convert::Infallible> {
 }
 
 fn resolvers() -> Resolvers<Db> {
-    Resolvers::new().root(posts().resolver).fetch::<RawUser>().fetch::<RawComment>()
+    Resolvers::new()
+        .root(posts().resolver)
+        .fetch::<RawUser>()
+        .fetch::<RawComment>()
 }
 
 impl idyll_data::Fetch<Db> for RawUser {
@@ -72,7 +75,9 @@ impl idyll_data::Fetch<Db> for RawUser {
 
 impl idyll_data::Fetch<Db> for RawComment {
     async fn fetch(_db: Db, id: u64) -> Result<RawComment, idyll_data::BoxError> {
-        Ok(RawComment(serde_json::json!({ "id": id, "text": format!("comment {id}") })))
+        Ok(RawComment(
+            serde_json::json!({ "id": id, "text": format!("comment {id}") }),
+        ))
     }
 }
 
@@ -125,21 +130,34 @@ fn a_missing_fetcher_is_a_boot_failure_not_a_render_failure() {
     let op = idyll_data::CanonOp::from_canonical_json(&PostFeed::query_file().contents).unwrap();
     validate(&schema, &op).expect("typechecks: the schema knows nothing of resolvers");
 
-    let complete = Resolvers::new().root(posts().resolver).fetch::<RawUser>().fetch::<RawComment>();
+    let complete = Resolvers::new()
+        .root(posts().resolver)
+        .fetch::<RawUser>()
+        .fetch::<RawComment>();
     idyll_data::validate_registered(&schema, &op, &complete).expect("every edge is registered");
 
-    let missing_author = Resolvers::new().root(posts().resolver).fetch::<RawComment>();
+    let missing_author = Resolvers::new()
+        .root(posts().resolver)
+        .fetch::<RawComment>();
     let err = idyll_data::validate_registered(&schema, &op, &missing_author)
         .expect_err("the `author` edge has no fetcher");
     assert_eq!(
         err,
-        idyll_data::ValidateError::MissingFetcher { edge: "author".into(), target: "User".into() }
+        idyll_data::ValidateError::MissingFetcher {
+            edge: "author".into(),
+            target: "User".into()
+        }
     );
 
     let no_root: Resolvers<Db> = Resolvers::new().fetch::<RawUser>().fetch::<RawComment>();
     let err = idyll_data::validate_registered(&schema, &op, &no_root)
         .expect_err("the `posts` root has no resolver");
-    assert_eq!(err, idyll_data::ValidateError::MissingResolver { root: "posts".into() });
+    assert_eq!(
+        err,
+        idyll_data::ValidateError::MissingResolver {
+            root: "posts".into()
+        }
+    );
 }
 
 #[test]
@@ -151,14 +169,23 @@ fn the_full_loop_executes_replays_and_projects() {
     validate(&schema, &op).expect("operation typechecks");
 
     // …the server interprets it…
-    let executed = block_on(execute(&schema, &op, &resolvers(), &Db, &serde_json::json!({})))
-        .expect("executes");
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers(),
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .expect("executes");
 
     // …and the client replays the wire bytes and reads through projections only.
     let preloaded: Preloaded<PostFeedRoots> =
         serde_json::from_slice(&executed.to_preloaded_json()).expect("wire shape matches Roots");
     let (_rt, owner) = test_scope();
-    let cache = preloaded.seed.to_cache(owner).expect("the executed seed replays");
+    let cache = preloaded
+        .seed
+        .to_cache(owner)
+        .expect("the executed seed replays");
 
     let posts = preloaded.roots.posts();
     assert_eq!(posts.len(), 2);
@@ -185,12 +212,21 @@ fn optional_edges_project_absence_as_none() {
     let schema = schema();
     let op = idyll_data::CanonOp::from_canonical_json(&EditedFeed::query_file().contents).unwrap();
     validate(&schema, &op).expect("operation typechecks");
-    let executed = block_on(execute(&schema, &op, &resolvers(), &Db, &serde_json::json!({})))
-        .expect("executes");
+    let executed = block_on(execute(
+        &schema,
+        &op,
+        &resolvers(),
+        &Db,
+        &serde_json::json!({}),
+    ))
+    .expect("executes");
     let preloaded: Preloaded<EditedFeedRoots> =
         serde_json::from_slice(&executed.to_preloaded_json()).expect("wire shape matches Roots");
     let (_rt, owner) = test_scope();
-    let cache = preloaded.seed.to_cache(owner).expect("the executed seed replays");
+    let cache = preloaded
+        .seed
+        .to_cache(owner)
+        .expect("the executed seed replays");
     let turn = idyll::Turn::for_test();
     let posts = preloaded.roots.posts();
 
@@ -200,7 +236,9 @@ fn optional_edges_project_absence_as_none() {
     assert_eq!(author.savings.map(|savings| savings.amount), Some(9));
 
     let edited = block_on(EditedPost::read(&cache, posts[1].clone())).now(&turn);
-    let Some(editor) = edited.editor else { panic!("post 2 has an editor") };
+    let Some(editor) = edited.editor else {
+        panic!("post 2 has an editor")
+    };
     let editor = block_on(Saver::read(&cache, editor)).now(&turn);
     assert_eq!(editor.name, "Ada");
     assert!(editor.savings.is_none());
@@ -212,14 +250,26 @@ fn the_artifact_identity_is_stable_and_self_verifying() {
     let file = PostFeed::query_file();
     let mut hasher = Sha256::new();
     hasher.update(file.contents.as_bytes());
-    let hex: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    assert_eq!(file.filename, format!("{hex}.query"), "filename == sha256(contents)");
+    let hex: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        file.filename,
+        format!("{hex}.query"),
+        "filename == sha256(contents)"
+    );
     // The runtime identity (OpHash, two u64 words) is the digest's 128-bit prefix.
     assert_eq!(PostFeed::hash().to_string(), hex[..32]);
 
     // The operation inlines its fragment tree transitively — the artifact is complete.
     for field in ["title", "name", "amount", "text"] {
-        assert!(file.contents.contains(field), "artifact missing inlined `{field}`:\n{}", file.contents);
+        assert!(
+            file.contents.contains(field),
+            "artifact missing inlined `{field}`:\n{}",
+            file.contents
+        );
     }
 }
 
