@@ -1,6 +1,6 @@
 [package]
 name = "idyll-serve"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"
@@ -16,7 +16,7 @@ idyll-host = { version = "0.1.0", path = "../idyll-host" }
 idyll-schema = { version = "0.1.0", path = "../idyll-schema" }
 idyll-styles = { version = "0.1.0", path = "../idyll-styles" }
 idyll-data = { version = "0.1.0", path = "../idyll-data", default-features = false }
-idyll-route = { version = "0.1.0", path = "../idyll-route" }
+idyll-route = { version = "0.2.0", path = "../idyll-route" }
 base64 = "0.22"
 axum = { workspace = true }
 html-escape = "0.2"

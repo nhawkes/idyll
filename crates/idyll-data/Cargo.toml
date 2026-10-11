@@ -1,6 +1,6 @@
 [package]
 name = "idyll-data"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"
@@ -8,7 +8,7 @@ repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
 idyll = { version = "0.1.0", path = "../idyll" }
-idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
+idyll-macros = { version = "0.2.0", path = "../idyll-macros" }
 idyll-schema = { version = "0.1.0", path = "../idyll-schema" }
 derive-where = { workspace = true }
 serde = { workspace = true }

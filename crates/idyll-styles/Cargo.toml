@@ -1,6 +1,6 @@
 [package]
 name = "idyll-styles"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Vibe coded web framework"
 license = "MIT"
@@ -8,7 +8,7 @@ repository = "https://github.com/nhawkes/idyll"
 
 [dependencies]
 idyll = { version = "0.1.0", path = "../idyll" }
-idyll-macros = { version = "0.1.0", path = "../idyll-macros" }
+idyll-macros = { version = "0.2.0", path = "../idyll-macros" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
