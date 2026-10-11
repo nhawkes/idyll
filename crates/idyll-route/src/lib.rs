@@ -15,17 +15,82 @@
 //! }
 //! ```
 //!
-//! A `{seg}` binds exactly one path segment (`String`); a `{seg*}` binds the rest as segments
-//! (`Vec<String>`). Segments are the honest unit: percent-encoding is per-segment, so a slug
+//! A `{seg}` binds exactly one path segment to any [`Segment`] type; a `{seg*}` binds the rest
+//! as a `Vec` of them. Segments are the honest unit: percent-encoding is per-segment, so a slug
 //! containing a `/` (encoded `%2F`) stays one segment and round-trips — a flat `String` would
 //! lose that boundary. Enumerating *which* routes exist is a separate, data-dependent concern
 //! (see `idyll_serve::Sitemap`); this crate is only the pure `url ↔ route` codec.
+//!
+//! Patterns may not overlap: a path two variants could both claim is a compile error, so no
+//! declaration order ever decides a match. Where one shape means different things, the
+//! binding's own type tells them apart — `#[derive(Segment)]` names each literal segment, and
+//! one newtype variant takes every segment no literal claims:
+//!
+//! ```
+//! use idyll_route::{Route, Segment};
+//!
+//! #[derive(Route, Debug, PartialEq)]
+//! enum SiteRoute {
+//!     #[route("/")]        Index,
+//!     #[route("/{page}")]  Page { page: Slug },
+//! }
+//!
+//! #[derive(Segment, Debug, PartialEq)]
+//! enum Slug {
+//!     #[segment("404")] NotFound,
+//!     Post(String),
+//! }
+//!
+//! assert_eq!(SiteRoute::parse("/404"), Some(SiteRoute::Page { page: Slug::NotFound }));
+//! assert_eq!(
+//!     SiteRoute::parse("/hello"),
+//!     Some(SiteRoute::Page { page: Slug::Post("hello".into()) }),
+//! );
+//! ```
+//!
+//! The literal wins, so a default holding a literal's spelling projects to a URL that parses
+//! back as the literal: `Slug::Post("404")` is `/404`, which is `Slug::NotFound`.
+//!
+//! Spelled as two variants, `/404` would also be a `/{page}`:
+//!
+//! ```compile_fail
+//! #[derive(idyll_route::Route)]
+//! enum SiteRoute {
+//!     #[route("/404")]    NotFound,
+//!     #[route("/{post}")] Post { post: String },
+//! }
+//! ```
+//!
+//! A segment has one default, so a second newtype variant is rejected too:
+//!
+//! ```compile_fail
+//! #[derive(idyll_route::Segment)]
+//! enum Slug {
+//!     Post(String),
+//!     Tag(String),
+//! }
+//! ```
+//!
+//! A catch-all may bind no segments at all, so `/docs` is also a `/docs/{path*}`:
+//!
+//! ```compile_fail
+//! #[derive(idyll_route::Route)]
+//! enum SiteRoute {
+//!     #[route("/docs")]         Docs,
+//!     #[route("/docs/{path*}")] Doc { path: Vec<String> },
+//! }
+//! ```
 
 use std::fmt;
 
 /// `#[derive(Route)]` — implements [`Route`] from `#[route("…")]` patterns (re-exported
 /// serde-style, so `idyll_route::Route` names both the trait and its derive).
 pub use idyll_macros::Route;
+
+/// `#[derive(Segment)]` — implements [`Segment`] for an enum: each unit variant claims the
+/// literal its `#[segment("…")]` names, and at most one newtype variant takes every other
+/// segment.
+pub use idyll_macros::Segment;
 
 /// A relative URL path — the projection of a typed [`Route`]. Built from decoded segments,
 /// each percent-encoded and joined under a leading `/`.
@@ -68,6 +133,26 @@ pub trait Route: Sized {
     fn parse(path: &str) -> Option<Self>;
     /// route → url. Total: a route value is a page that exists.
     fn url(&self) -> Url;
+}
+
+/// One decoded path segment as a typed value — what a `{seg}`, or each element of a `{seg*}`,
+/// binds. [`segment`](Segment::segment) is the inverse of [`parse`](Segment::parse); the
+/// derive percent-decodes before one and encodes after the other.
+pub trait Segment: Sized {
+    /// segment → value. `None` and the route does not match.
+    fn parse(segment: &str) -> Option<Self>;
+    /// value → segment.
+    fn segment(&self) -> String;
+}
+
+impl Segment for String {
+    fn parse(segment: &str) -> Option<String> {
+        Some(segment.to_owned())
+    }
+
+    fn segment(&self) -> String {
+        self.clone()
+    }
 }
 
 /// Split a path into its non-empty segments (`"/docs/a/b"` → `["docs","a","b"]`, `"/"` → `[]`).

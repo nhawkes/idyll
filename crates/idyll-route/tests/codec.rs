@@ -68,3 +68,73 @@ fn round_trips_through_encoding() {
         assert_eq!(R::parse(url.as_str()), Some(r), "round-trip via {url}");
     }
 }
+
+#[derive(idyll_route::Segment, Debug, PartialEq)]
+enum Slug {
+    #[segment("about")]
+    About,
+    Post(String),
+}
+
+#[derive(idyll_route::Segment, Debug, PartialEq)]
+enum Format {
+    #[segment("json")]
+    Json,
+    #[segment("html")]
+    Html,
+}
+
+#[test]
+fn a_segment_without_a_default_claims_only_its_literals() {
+    use idyll_route::Segment;
+    assert_eq!(Format::parse("json"), Some(Format::Json));
+    assert_eq!(Format::parse("xml"), None);
+    assert_eq!(Format::Html.segment(), "html");
+}
+
+#[derive(Route, Debug, PartialEq)]
+enum Site {
+    #[route("/")]
+    Index,
+    #[route("/{page}")]
+    Page { page: Slug },
+    #[route("/by/tag/{tags*}")]
+    Tags { tags: Vec<Slug> },
+}
+
+#[test]
+fn a_segment_type_parses_the_difference() {
+    assert_eq!(
+        Site::parse("/about"),
+        Some(Site::Page { page: Slug::About })
+    );
+    assert_eq!(
+        Site::parse("/a%20b"),
+        Some(Site::Page {
+            page: Slug::Post("a b".into())
+        })
+    );
+    assert_eq!(
+        Site::parse("/by/tag/about/x"),
+        Some(Site::Tags {
+            tags: vec![Slug::About, Slug::Post("x".into())]
+        })
+    );
+    for site in [
+        Site::Index,
+        Site::Page { page: Slug::About },
+        Site::Page {
+            page: Slug::Post("a/b".into()),
+        },
+        Site::Tags {
+            tags: vec![Slug::Post("c d".into()), Slug::About],
+        },
+    ] {
+        let url = site.url();
+        assert_eq!(
+            Site::parse(url.as_str()),
+            Some(site),
+            "round-trip via {url}"
+        );
+    }
+}

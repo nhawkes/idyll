@@ -6501,9 +6501,10 @@ pub fn guest(input: TokenStream) -> TokenStream {
 //
 // One `#[route("…")]` pattern per variant emits BOTH directions of `idyll_route::Route`:
 // `parse` (url → route) and `url` (route → url). They are inverse by construction, so links
-// and request-parsing can never drift. `{seg}` binds one path segment to a `String` field;
-// `{seg*}` (last only) binds the rest to a `Vec<String>` field — segments are the unit
-// because percent-encoding is per-segment.
+// and request-parsing can never drift. `{seg}` binds one path segment to an
+// `idyll_route::Segment` field; `{seg*}` (last only) binds the rest to a `Vec` of them —
+// segments are the unit because percent-encoding is per-segment. Two patterns that could
+// claim the same path are rejected, so `parse` never depends on variant order.
 
 /// One segment of a `#[route]` pattern.
 enum RoutePart {
@@ -6536,6 +6537,34 @@ fn parse_route_pattern(lit: &LitStr) -> Result<Vec<RoutePart>> {
     Ok(parts)
 }
 
+/// How many leading segments a pattern fixes, and whether a catch-all follows them.
+fn fixed_prefix(parts: &[RoutePart]) -> (usize, bool) {
+    match parts.last() {
+        Some(RoutePart::Rest(_)) => (parts.len() - 1, true),
+        _ => (parts.len(), false),
+    }
+}
+
+/// Whether some path matches both patterns: their lengths admit a common path, and no
+/// position fixed in both holds two different literals.
+fn routes_overlap(a: &[RoutePart], b: &[RoutePart]) -> bool {
+    let ((a_len, a_rest), (b_len, b_rest)) = (fixed_prefix(a), fixed_prefix(b));
+    let lengths_meet = match (a_rest, b_rest) {
+        (false, false) => a_len == b_len,
+        (true, false) => b_len >= a_len,
+        (false, true) => a_len >= b_len,
+        (true, true) => true,
+    };
+    lengths_meet
+        && a.iter()
+            .zip(b)
+            .take(a_len.min(b_len))
+            .all(|pair| match pair {
+                (RoutePart::Literal(x), RoutePart::Literal(y)) => x == y,
+                _ => true,
+            })
+}
+
 fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
     let name = &input.ident;
     let syn::Data::Enum(data) = &input.data else {
@@ -6546,6 +6575,7 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
     };
     let idx = |i: usize| proc_macro2::Literal::usize_unsuffixed(i);
     let (mut parse_arms, mut url_arms) = (Vec::new(), Vec::new());
+    let mut claimed: Vec<(LitStr, Vec<RoutePart>)> = Vec::new();
 
     for variant in &data.variants {
         let vname = &variant.ident;
@@ -6558,12 +6588,21 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
             })?;
         let lit: LitStr = attr.parse_args()?;
         let parts = parse_route_pattern(&lit)?;
-        let has_rest = matches!(parts.last(), Some(RoutePart::Rest(_)));
-        let fixed_len = if has_rest {
-            parts.len() - 1
-        } else {
-            parts.len()
-        };
+        if let Some((other, _)) = claimed
+            .iter()
+            .find(|(_, other)| routes_overlap(other, &parts))
+        {
+            return Err(syn::Error::new(
+                lit.span(),
+                format!(
+                    "`{}` overlaps `{}`: some path matches both — merge them into one pattern \
+                     whose binding is an `idyll_route::Segment` type that parses the difference",
+                    lit.value(),
+                    other.value()
+                ),
+            ));
+        }
+        let (fixed_len, has_rest) = fixed_prefix(&parts);
         let fixed_lit = idx(fixed_len);
 
         let len_check = if has_rest {
@@ -6587,15 +6626,21 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
                 }
                 RoutePart::Single(id) => {
                     let ii = idx(i);
-                    binds.push(quote! { let #id = ::idyll_route::decode_segment(__segs[#ii])?; });
+                    binds.push(quote! {
+                        let #id = ::idyll_route::Segment::parse(
+                            &::idyll_route::decode_segment(__segs[#ii])?,
+                        )?;
+                    });
                     fields.push(id.clone());
                 }
                 RoutePart::Rest(id) => {
                     binds.push(quote! {
                         let #id = {
-                            let mut __v: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
+                            let mut __v = ::std::vec::Vec::new();
                             for __s in &__segs[#fixed_lit..] {
-                                __v.push(::idyll_route::decode_segment(__s)?);
+                                __v.push(::idyll_route::Segment::parse(
+                                    &::idyll_route::decode_segment(__s)?,
+                                )?);
                             }
                             __v
                         };
@@ -6624,12 +6669,16 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
             match part {
                 RoutePart::Literal(l) => {
                     let l = LitStr::new(l, Span::call_site());
-                    push_segs.push(quote! { __segs.push(#l); });
+                    push_segs.push(quote! { __segs.push(::std::string::String::from(#l)); });
                 }
-                RoutePart::Single(id) => push_segs.push(quote! { __segs.push(#id.as_str()); }),
-                RoutePart::Rest(id) => {
-                    push_segs.push(quote! { for __s in #id.iter() { __segs.push(__s.as_str()); } })
+                RoutePart::Single(id) => {
+                    push_segs.push(quote! { __segs.push(::idyll_route::Segment::segment(#id)); })
                 }
+                RoutePart::Rest(id) => push_segs.push(quote! {
+                    for __s in #id.iter() {
+                        __segs.push(::idyll_route::Segment::segment(__s));
+                    }
+                }),
             }
         }
         let pat = if fields.is_empty() {
@@ -6639,11 +6688,12 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
         };
         url_arms.push(quote! {
             #pat => {
-                let mut __segs: ::std::vec::Vec<&str> = ::std::vec::Vec::new();
+                let mut __segs: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
                 #(#push_segs)*
-                ::idyll_route::Url::from_segments(__segs)
+                ::idyll_route::Url::from_segments(__segs.iter().map(::std::string::String::as_str))
             }
         });
+        claimed.push((lit, parts));
     }
 
     Ok(quote! {
@@ -6667,6 +6717,99 @@ fn route_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
 pub fn derive_route(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     match route_impl(input) {
+        Ok(ts) => ts.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+// ── #[derive(Segment)] — one path segment's typed values ────────────────────────
+//
+// Unit variants each claim one literal segment (`#[segment("404")]`); at most one newtype
+// variant is the default, and receives every segment no literal claims. Literals are
+// distinct, so the only overlap is literal-over-default, and the literal always wins.
+
+fn segment_impl(input: syn::DeriveInput) -> Result<TokenStream2> {
+    let name = &input.ident;
+    let syn::Data::Enum(data) = &input.data else {
+        return Err(syn::Error::new_spanned(
+            &input,
+            "#[derive(Segment)] is for an enum of segment variants",
+        ));
+    };
+    let mut literals: Vec<(LitStr, &Ident)> = Vec::new();
+    let mut default: Option<&Ident> = None;
+    for variant in &data.variants {
+        let attr = variant.attrs.iter().find(|a| a.path().is_ident("segment"));
+        match (&variant.fields, attr) {
+            (syn::Fields::Unit, Some(attr)) => {
+                let lit: LitStr = attr.parse_args()?;
+                if lit.value().is_empty() {
+                    return Err(syn::Error::new(lit.span(), "a segment is never empty"));
+                }
+                if let Some((_, other)) = literals.iter().find(|(l, _)| l.value() == lit.value()) {
+                    return Err(syn::Error::new(
+                        lit.span(),
+                        format!("`{}` is already `{other}`'s segment", lit.value()),
+                    ));
+                }
+                literals.push((lit, &variant.ident));
+            }
+            (syn::Fields::Unit, None) => {
+                return Err(syn::Error::new_spanned(
+                    variant,
+                    "a unit variant needs `#[segment(\"…\")]`",
+                ))
+            }
+            (syn::Fields::Unnamed(fields), None) if fields.unnamed.len() == 1 => {
+                if let Some(other) = default {
+                    return Err(syn::Error::new_spanned(
+                        variant,
+                        format!("`{other}` is already the default; a segment has at most one"),
+                    ));
+                }
+                default = Some(&variant.ident);
+            }
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    variant,
+                    "a variant is a unit with `#[segment(\"…\")]`, or the one newtype default",
+                ))
+            }
+        }
+    }
+
+    let (lits, units): (Vec<_>, Vec<_>) = literals.into_iter().unzip();
+    let (fallback, project_default) = match default {
+        Some(variant) => (
+            quote! { __other => ::idyll_route::Segment::parse(__other).map(Self::#variant) },
+            quote! { Self::#variant(__inner) => ::idyll_route::Segment::segment(__inner), },
+        ),
+        None => (quote! { _ => ::core::option::Option::None }, quote! {}),
+    };
+    Ok(quote! {
+        impl ::idyll_route::Segment for #name {
+            fn parse(__segment: &str) -> ::core::option::Option<Self> {
+                match __segment {
+                    #(#lits => ::core::option::Option::Some(Self::#units),)*
+                    #fallback
+                }
+            }
+            fn segment(&self) -> ::std::string::String {
+                match self {
+                    #(Self::#units => ::std::string::String::from(#lits),)*
+                    #project_default
+                }
+            }
+        }
+    })
+}
+
+/// `#[derive(Segment)]` — see [`idyll_route::Segment`]. Unit variants name their literal with
+/// `#[segment("…")]`; one newtype variant may take every other segment.
+#[proc_macro_derive(Segment, attributes(segment))]
+pub fn derive_segment(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as syn::DeriveInput);
+    match segment_impl(input) {
         Ok(ts) => ts.into(),
         Err(e) => e.to_compile_error().into(),
     }
