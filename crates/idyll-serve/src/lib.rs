@@ -23,7 +23,7 @@
 //!
 //! ```no_run
 //! # use idyll_serve::Server;
-//! # async fn f<Src: Clone + Send + Sync + 'static>(
+//! # async fn f<Src: Clone + Send + Sync + 'static + idyll_serve::Files>(
 //! #     route_query: idyll_data::QueryFile,
 //! #     root: idyll_data::AppRoot<Src>,
 //! #     data: Src,
@@ -45,11 +45,17 @@
 //! is a startup failure), publishes the contract (`schema.json` + the `ops/` registry),
 //! and serves. Client data needs (an SPA live's navigation, mutation refreshes) ride
 //! the *same* persisted artifacts over `GET /__idyll/q/<hash>` — one wire shape.
+//!
+//! Three namespaces: `assets_route` is the framework's immutable bundle, `/__idyll/*` its
+//! dynamic endpoints (operations, mutations, dev reload), and every other path is the
+//! app's to resolve. A path resolves to a [`File`] first ([`Files`], on the data source —
+//! a favicon, a stylesheet, a host's verification file) and otherwise to a page.
 
 mod build;
 mod chunks;
 mod split_emit;
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::path::PathBuf;
@@ -147,12 +153,6 @@ pub struct Server<Src: Clone + Send + Sync + 'static> {
     /// TCP port to bind. Defaults to `3001`.
     #[builder(default = 3001)]
     port: u16,
-    /// App-owned static assets (stylesheets, images…), served at `/static`. Three
-    /// namespaces: [`assets_route`](Self::assets_route) is the framework's immutable
-    /// content-addressed bundle, `/__idyll/*` its dynamic endpoints (operations,
-    /// mutations, dev reload); everything else, including `/static`, is the app's.
-    #[builder(into)]
-    assets: Option<PathBuf>,
     /// Where the content-addressed client bundle serves (Next's `_next`). Every file
     /// under it is `<hash>.<ext>` with an unbounded-cache `immutable` header — any
     /// CDN policy is safe against these names. Defaults to `/__idyll__`.
@@ -603,18 +603,19 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
         Ok(Some(Prepared {
             state,
             client_dir,
-            assets: self.assets,
             dev,
             port: self.port,
         }))
     }
 
     /// Build the app and serve it over HTTP. `Mode::Build` builds the bundle and returns.
-    pub async fn serve(self) -> anyhow::Result<()> {
+    pub async fn serve(self) -> anyhow::Result<()>
+    where
+        Src: Files,
+    {
         let Some(Prepared {
             state,
             client_dir,
-            assets,
             dev,
             port,
         }) = self.prepare().await?
@@ -641,9 +642,6 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
                 .route("/__idyll/reload", get(reload_sse::<Src>))
                 .route("/__idyll/styles", get(styles_endpoint::<Src>));
         }
-        if let Some(assets) = assets {
-            app = app.nest_service("/static", ServeDir::new(assets));
-        }
         let app = app.with_state(state);
         let app = if dev {
             app
@@ -667,9 +665,42 @@ impl<Src: Clone + Send + Sync + 'static> Server<Src> {
 struct Prepared<Src: Clone + Send + Sync + 'static> {
     state: Arc<AppState<Src>>,
     client_dir: std::path::PathBuf,
-    assets: Option<std::path::PathBuf>,
     dev: bool,
     port: u16,
+}
+
+/// A file a path resolves to: its media type and its bytes. Borrowed bytes cost nothing to
+/// serve, so an `include_bytes!` asset is a `File` without a copy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct File {
+    pub media_type: Cow<'static, str>,
+    pub bytes: Cow<'static, [u8]>,
+}
+
+impl File {
+    pub fn new(
+        media_type: impl Into<Cow<'static, str>>,
+        bytes: impl Into<Cow<'static, [u8]>>,
+    ) -> File {
+        File {
+            media_type: media_type.into(),
+            bytes: bytes.into(),
+        }
+    }
+}
+
+/// The app's **files** — the paths that resolve to bytes rather than a page. Implemented on
+/// the [data source](Server::data) and asked first for every path outside the framework's
+/// namespaces: `Some` serves the file, `None` hands the path to the route query. Prerender
+/// asks the same question of each [`Sitemap`] route and writes a file to its own path.
+/// The default resolves nothing — an app of pages alone.
+pub trait Files {
+    fn file(
+        &self,
+        _request: &idyll_data::Request,
+    ) -> impl std::future::Future<Output = Option<File>> + Send {
+        async { None }
+    }
 }
 
 /// The app's route **set**, for prerendering — which routes exist, computed from its data.
@@ -684,11 +715,12 @@ pub trait Sitemap {
     async fn routes(&self) -> Vec<Self::Route>;
 }
 
-impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
-    /// Prerender every route the [`Sitemap`] names into `out` as static files: run the same
-    /// SSR the server does, only early and to disk. `<out>/<url>.html` per page, the client
-    /// bundle under the assets route, the app's `/static` alongside, and a `manifest.json`
-    /// index. The result is a self-contained folder any static host serves — no running idyll.
+impl<Src: Clone + Send + Sync + 'static + Sitemap + Files> Server<Src> {
+    /// Prerender every route the [`Sitemap`] names into `out`. Each resolves as a request
+    /// would: a [`File`] is written to its own path, anything else is a page, rendered by the
+    /// same SSR the server runs — only early and to disk — to `<url>.html`. The client bundle
+    /// rides under the assets route, and a `manifest.json` indexes the pages. The result is a
+    /// self-contained folder any static host serves — no running idyll.
     pub async fn prerender(self, out: &std::path::Path, standalone: bool) -> anyhow::Result<()> {
         if out.exists() {
             anyhow::ensure!(
@@ -697,49 +729,58 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
                 out.display()
             );
         }
-        let routes = self.data.routes().await;
-        let destinations = prerender_destinations(&routes)?;
+        // The route set is typed values; each projects to its URL, which drives both the
+        // resolution and the output file. Parse-don't-validate: no URL strings enumerated here.
+        let mut resolved = Vec::new();
+        for route in self.data.routes().await {
+            let url = route.url();
+            let file = self
+                .data
+                .file(&idyll_data::Request::new(url.as_str()))
+                .await;
+            resolved.push((url, file));
+        }
+        let destinations = prerender_destinations(&resolved)?;
         let Prepared {
-            state,
-            client_dir,
-            assets,
-            ..
+            state, client_dir, ..
         } = self
             .prepare()
             .await?
             .context("prerender needs a servable mode, not `Mode::Build`")?;
-        let assets_route = state.assets_route.trim_start_matches('/').to_string();
 
         std::fs::create_dir_all(out)?;
         // `--standalone` inlines every asset as a `data:` URL (the JS graph rewritten to match), so
-        // each page is a self-contained file — no fetches, works from `file://`. Otherwise assets
-        // ride at the same paths the HTML references: the content-addressed bundle under the
-        // assets route, the app's `/static` (fonts, favicon) alongside.
+        // each page is a self-contained file — no fetches, works from `file://`. Otherwise the
+        // content-addressed bundle rides under the assets route the HTML references.
         let embed = if standalone {
-            Some(build_embed(
-                &client_dir,
-                &state.assets_route,
-                assets.as_deref(),
-            )?)
+            let files = resolved
+                .iter()
+                .filter_map(|(url, file)| Some((url.as_str(), file.as_ref()?)));
+            Some(build_embed(&client_dir, &state.assets_route, files)?)
         } else {
-            copy_tree(&client_dir, &out.join(&assets_route))?;
-            if let Some(static_dir) = &assets {
-                copy_tree(static_dir, &out.join("static"))?;
-            }
+            copy_tree(
+                &client_dir,
+                &out.join(state.assets_route.trim_start_matches('/')),
+            )?;
             None
         };
 
-        // The route set is typed values; each projects to its URL, which drives both the
-        // render and the output file. Parse-don't-validate: no URL strings enumerated here.
         println!(
             "prerendering {} routes → {}{}",
-            routes.len(),
+            resolved.len(),
             out.display(),
             if standalone { " (standalone)" } else { "" }
         );
         let mut pages = Vec::new();
-        for (route, file) in routes.iter().zip(destinations) {
-            let url = route.url();
+        for ((url, file), destination) in resolved.into_iter().zip(destinations) {
+            let dest = out.join(&destination);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            if let Some(file) = file {
+                std::fs::write(&dest, &file.bytes)?;
+                continue;
+            }
             let faults = Arc::new(std::sync::Mutex::new(Vec::new()));
             let body = match render_path(&state, url.as_str(), Some(faults.clone())).await {
                 Ok(body) => body,
@@ -765,10 +806,6 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
             if let Some(embed) = &embed {
                 html = embed.inline(html);
             }
-            let dest = out.join(&file);
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
             std::fs::write(&dest, html.as_bytes())?;
             if !standalone {
                 std::fs::write(
@@ -776,7 +813,10 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
                     build::brotli_bytes(html.as_bytes()),
                 )?;
             }
-            pages.push((url.into_string(), file.to_string_lossy().into_owned()));
+            pages.push((
+                url.into_string(),
+                destination.to_string_lossy().into_owned(),
+            ));
         }
 
         // `404.html` is what static hosts (Cloudflare Pages, Netlify, GitHub Pages) serve
@@ -824,48 +864,48 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap> Server<Src> {
     }
 }
 
-fn prerender_destinations<R: idyll_route::Route>(routes: &[R]) -> anyhow::Result<Vec<PathBuf>> {
-    anyhow::ensure!(!routes.is_empty(), "prerender route set is empty");
-    let mut destinations = HashSet::new();
-    routes
+/// Where each resolved route lands in the output: a file at its own path, a page at
+/// `<path>.html` (`/` → `index.html`). Segments are percent-decoded, so the name matches what
+/// a static server resolves the request path to. A segment that cannot name a file, or two
+/// routes landing on one name (hosts fold case), refuses the build.
+fn prerender_destinations(
+    resolved: &[(idyll_route::Url, Option<File>)],
+) -> anyhow::Result<Vec<PathBuf>> {
+    anyhow::ensure!(!resolved.is_empty(), "prerender route set is empty");
+    let mut taken = HashSet::new();
+    resolved
         .iter()
-        .map(|route| {
-            let url = route.url();
-            for segment in idyll_route::split_path(url.as_str()) {
-                let decoded = idyll_route::decode_segment(segment).context("route is not UTF-8")?;
-                anyhow::ensure!(
-                    !decoded.is_empty()
-                        && decoded != "."
-                        && decoded != ".."
-                        && !decoded.contains(['/', '\\', ':', '\0'])
-                        && !decoded.ends_with(['.', ' ']),
-                    "route cannot be represented as a file: {url}"
-                );
-            }
-            let file = url_to_file(url.as_str());
+        .map(|(url, file)| {
+            let segments = idyll_route::split_path(url.as_str())
+                .into_iter()
+                .map(|segment| {
+                    let decoded =
+                        idyll_route::decode_segment(segment).context("route is not UTF-8")?;
+                    anyhow::ensure!(
+                        !decoded.is_empty()
+                            && decoded != "."
+                            && decoded != ".."
+                            && !decoded.contains(['/', '\\', ':', '\0'])
+                            && !decoded.ends_with(['.', ' ']),
+                        "route cannot be represented as a file: {url}"
+                    );
+                    Ok(decoded)
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let destination = match (file, segments.as_slice()) {
+                (Some(_), []) => anyhow::bail!("a file needs a path of its own, not `/`"),
+                (Some(_), _) => PathBuf::from(segments.join("/")),
+                (None, []) => PathBuf::from("index.html"),
+                (None, _) => PathBuf::from(format!("{}.html", segments.join("/"))),
+            };
             anyhow::ensure!(
-                destinations.insert(file.to_string_lossy().to_lowercase()),
+                taken.insert(destination.to_string_lossy().to_lowercase()),
                 "duplicate prerender destination: {}",
-                file.display()
+                destination.display()
             );
-            Ok(file)
+            Ok(destination)
         })
         .collect()
-}
-
-/// Map a URL path to its output file: `/` → `index.html`, `/docs/a/b` → `docs/a/b.html`.
-/// Segments are percent-decoded, so the file name matches what a static server resolves a
-/// request path to.
-fn url_to_file(url: &str) -> std::path::PathBuf {
-    let segs: Vec<String> = idyll_route::split_path(url)
-        .into_iter()
-        .map(|s| idyll_route::decode_segment(s).unwrap_or_else(|| s.to_string()))
-        .collect();
-    if segs.is_empty() {
-        "index.html".into()
-    } else {
-        format!("{}.html", segs.join("/")).into()
-    }
 }
 
 /// Recursively copy a directory tree. A missing source is a no-op.
@@ -901,7 +941,7 @@ fn json_str(s: &str) -> String {
 }
 
 /// The inlined-asset table for `--standalone`: every asset URL → its `data:` URL. Non-JS assets
-/// embed directly; the fonts stylesheet inlines its woff2 first; JS embeds last, in dependency
+/// embed directly; a stylesheet after the assets its `url(...)`s name; JS embeds last, in dependency
 /// order, with its `./x.js` imports and `new URL('./x.wasm')` refs rewritten to the data URLs
 /// already computed — so an embedded module resolves entirely from within the page.
 struct Embed {
@@ -910,7 +950,7 @@ struct Embed {
 
 impl Embed {
     /// Replace every `"<asset-url>"` in the document with its `data:` URL — the module script's
-    /// `src`/`data-app`, `<link>` hrefs, the fonts stylesheet, the favicon, and the chunk map.
+    /// `src`/`data-app`, `<link>` hrefs to the app's files, and the chunk map.
     /// An asset URL always appears double-quoted (an attribute or a JSON string), so one quoted
     /// replace per asset covers every site.
     fn inline(&self, mut html: String) -> String {
@@ -934,23 +974,22 @@ fn asset_mime(path: &str) -> &'static str {
         Some("wasm") => "application/wasm",
         Some("js") => "text/javascript",
         Some("css") => "text/css",
-        Some("woff2") => "font/woff2",
-        Some("svg") => "image/svg+xml",
         Some("json") => "application/json",
         _ => "application/octet-stream",
     }
 }
 
-/// Build the [`Embed`] table from the built assets: the content-addressed client bundle under
-/// `assets_route`, plus the app's `/static` tree.
-fn build_embed(
+/// Build the [`Embed`] table: the content-addressed client bundle under `assets_route`, plus
+/// every file the app resolves.
+fn build_embed<'a>(
     client_dir: &std::path::Path,
     assets_route: &str,
-    static_dir: Option<&std::path::Path>,
+    files: impl IntoIterator<Item = (&'a str, &'a File)>,
 ) -> anyhow::Result<Embed> {
-    // Every asset as `url-path -> bytes`. The bundle's files sit at the top of `client_dir`;
-    // its `stage/`/`split/` subdirs are build scratch, and `.br` are brotli sidecars.
-    let mut raw: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
+    // Every asset as `url-path -> (media type, bytes)`. The bundle's files sit at the top of
+    // `client_dir`; its `stage/`/`split/` subdirs are build scratch, and `.br` are brotli
+    // sidecars.
+    let mut raw: HashMap<String, (Cow<'a, str>, Cow<'a, [u8]>)> = HashMap::new();
     for entry in std::fs::read_dir(client_dir)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -959,23 +998,33 @@ fn build_embed(
         }
         raw.insert(
             format!("{assets_route}/{name}"),
-            std::fs::read(entry.path())?,
+            (
+                asset_mime(&name).into(),
+                std::fs::read(entry.path())?.into(),
+            ),
         );
     }
-    if let Some(dir) = static_dir {
-        collect_tree(dir, "/static", &mut raw)?;
+    for (url, file) in files {
+        raw.insert(
+            url.to_owned(),
+            (
+                Cow::Borrowed(file.media_type.as_ref()),
+                Cow::Borrowed(file.bytes.as_ref()),
+            ),
+        );
     }
+    let is = |mime: &str, essence: &str| mime.split(';').next().map(str::trim) == Some(essence);
 
-    let mut data_urls: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut data_urls: HashMap<String, String> = HashMap::new();
     // Non-JS, non-CSS first — a woff2 must have a data URL before the stylesheet inlines it.
-    for (path, bytes) in &raw {
-        if !path.ends_with(".js") && !path.ends_with(".css") {
-            data_urls.insert(path.clone(), data_url(asset_mime(path), bytes));
+    for (path, (mime, bytes)) in &raw {
+        if !is(mime, "text/javascript") && !is(mime, "text/css") {
+            data_urls.insert(path.clone(), data_url(mime, bytes));
         }
     }
     // CSS: rewrite its asset `url(...)` refs to the data URLs just built, then embed.
-    for (path, bytes) in &raw {
-        if path.ends_with(".css") {
+    for (path, (mime, bytes)) in &raw {
+        if is(mime, "text/css") {
             let mut css = String::from_utf8_lossy(bytes).into_owned();
             for (asset, data) in &data_urls {
                 css = css.replace(asset, data);
@@ -984,13 +1033,16 @@ fn build_embed(
         }
     }
     // JS: dependency order — a module's `./x.js` imports must already be data URLs.
-    let mut pending: std::collections::HashSet<String> =
-        raw.keys().filter(|p| p.ends_with(".js")).cloned().collect();
+    let mut pending: HashSet<String> = raw
+        .iter()
+        .filter(|(_, (mime, _))| is(mime, "text/javascript"))
+        .map(|(path, _)| path.clone())
+        .collect();
     while !pending.is_empty() {
         let ready: Vec<String> = pending
             .iter()
             .filter(|p| {
-                js_module_deps(&raw[*p], assets_route)
+                js_module_deps(&raw[*p].1, assets_route)
                     .iter()
                     .all(|d| !pending.contains(d))
             })
@@ -1001,7 +1053,7 @@ fn build_embed(
             "unresolved or cyclic JS imports in the bundle"
         );
         for path in ready {
-            let src = String::from_utf8_lossy(&raw[&path]).into_owned();
+            let src = String::from_utf8_lossy(&raw[&path].1).into_owned();
             let rewritten = rewrite_js_refs(&src, assets_route, &data_urls);
             data_urls.insert(
                 path.clone(),
@@ -1050,24 +1102,6 @@ fn rewrite_js_refs(
         }
     }
     out
-}
-
-/// Collect a directory tree as `<prefix>/<relpath> -> bytes`.
-fn collect_tree(
-    dir: &std::path::Path,
-    prefix: &str,
-    into: &mut std::collections::HashMap<String, Vec<u8>>,
-) -> anyhow::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let url = format!("{prefix}/{}", entry.file_name().to_string_lossy());
-        if entry.file_type()?.is_dir() {
-            collect_tree(&entry.path(), &url, into)?;
-        } else {
-            into.insert(url, std::fs::read(entry.path())?);
-        }
-    }
-    Ok(())
 }
 
 /// Produce the document **stream** for `path`. The route query and the page contract
@@ -1667,13 +1701,23 @@ async fn render_not_found<Src: Clone + Send + Sync + 'static>(
     }
 }
 
-/// Serve any path: execute the route query, stream the document. Absence is an
-/// honest 404 (the stream only starts after the route resolves), carrying the app's
-/// not-found page when it names one.
-async fn page_endpoint<Src: Clone + Send + Sync + 'static>(
+/// Serve any path: a [`File`] the app resolves it to, or else the route query's document,
+/// streamed. Absence is an honest 404 (the stream only starts after the route resolves),
+/// carrying the app's not-found page when it names one.
+async fn page_endpoint<Src: Clone + Send + Sync + 'static + Files>(
     uri: axum::http::Uri,
     State(state): State<Arc<AppState<Src>>>,
 ) -> Response {
+    if let Some(file) = state.data.file(&idyll_data::Request::new(uri.path())).await {
+        let bytes = match file.bytes {
+            Cow::Borrowed(bytes) => Bytes::from_static(bytes),
+            Cow::Owned(bytes) => Bytes::from(bytes),
+        };
+        return Response::builder()
+            .header(header::CONTENT_TYPE, file.media_type.as_ref())
+            .body(axum::body::Body::from(bytes))
+            .unwrap_or_else(|err| fault("file", err, state.dev));
+    }
     let document = |status: StatusCode, body: axum::body::Body| {
         Response::builder()
             .status(status)
@@ -2105,17 +2149,24 @@ mod tests {
 
     #[test]
     fn prerender_rejects_colliding_and_unrepresentable_routes() {
-        #[derive(idyll_route::Route)]
-        enum Route {
-            #[route("/")]
-            Index,
-            #[route("/{slug}")]
-            Doc { slug: String },
-        }
-        let doc = |slug: &str| Route::Doc { slug: slug.into() };
-        assert!(prerender_destinations::<Route>(&[]).is_err());
-        assert!(prerender_destinations(&[Route::Index, doc("index")]).is_err());
+        let page = |url: &str| {
+            (
+                idyll_route::Url::from_segments(idyll_route::split_path(url)),
+                None,
+            )
+        };
+        let file = |url: &str| {
+            (
+                idyll_route::Url::from_segments(idyll_route::split_path(url)),
+                Some(File::new("text/plain", &b""[..])),
+            )
+        };
+        let doc = |slug: &str| (idyll_route::Url::from_segments([slug]), None);
+        assert!(prerender_destinations(&[]).is_err());
+        assert!(prerender_destinations(&[page("/"), doc("index")]).is_err());
         assert!(prerender_destinations(&[doc("intro"), doc("INTRO")]).is_err());
+        assert!(prerender_destinations(&[file("/intro.html"), doc("intro")]).is_err());
+        assert!(prerender_destinations(&[file("/")]).is_err());
         for slug in [
             "..",
             ".",
@@ -2128,8 +2179,12 @@ mod tests {
             assert!(prerender_destinations(&[doc(slug)]).is_err(), "{slug}");
         }
         assert_eq!(
-            prerender_destinations(&[Route::Index, doc("intro")]).unwrap(),
-            [PathBuf::from("index.html"), PathBuf::from("intro.html")]
+            prerender_destinations(&[page("/"), doc("intro"), file("/static/icon.svg")]).unwrap(),
+            [
+                PathBuf::from("index.html"),
+                PathBuf::from("intro.html"),
+                PathBuf::from("static/icon.svg"),
+            ]
         );
     }
 

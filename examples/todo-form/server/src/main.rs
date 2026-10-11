@@ -27,6 +27,8 @@ struct Db {
     todos: std::sync::Arc<std::sync::RwLock<Vec<Todo>>>,
 }
 
+impl idyll_serve::Files for Db {}
+
 impl Db {
     fn seeded() -> Self {
         Db {
