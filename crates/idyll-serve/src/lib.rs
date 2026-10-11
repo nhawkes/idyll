@@ -74,8 +74,12 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use idyll_data::Request;
 use idyll_host::{MembraneEngine, MountOutcome};
-use idyll_route::Route as _;
+use idyll_route::{decode_segment, split_path, Route, Url};
+use quick_xml::events::{BytesDecl, Event as XmlEvent};
+use quick_xml::Writer as XmlWriter;
+use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_stream::{
     wrappers::{BroadcastStream, UnboundedReceiverStream},
@@ -186,7 +190,7 @@ pub struct Server<Src: Clone + Send + Sync + 'static> {
     /// nothing, the server renders this route's page under a 404 status, and
     /// [`prerender`](Self::prerender) writes it to `404.html`. Without it, absence is a
     /// bare-text 404. The route itself is an ordinary page at its own URL.
-    #[builder(with = |route: impl idyll_route::Route| route.url().into_string())]
+    #[builder(with = |route: impl Route| route.url().into_string())]
     not_found: Option<String>,
 }
 
@@ -695,12 +699,44 @@ impl File {
 /// asks the same question of each [`Sitemap`] route and writes a file to its own path.
 /// The default resolves nothing — an app of pages alone.
 pub trait Files {
-    fn file(
-        &self,
-        _request: &idyll_data::Request,
-    ) -> impl std::future::Future<Output = Option<File>> + Send {
+    fn file(&self, _request: &Request) -> impl std::future::Future<Output = Option<File>> + Send {
         async { None }
     }
+}
+
+/// A `sitemap.xml` naming each of `pages` at its absolute URL under `origin`
+/// (`https://example.com`, no trailing slash). Serve it from [`Files`] at whichever route the
+/// app gives it, so crawlers find the pages without following links.
+pub fn sitemap<R: Route>(origin: &str, pages: impl IntoIterator<Item = R>) -> File {
+    #[derive(Serialize)]
+    struct UrlSet {
+        #[serde(rename = "@xmlns")]
+        xmlns: &'static str,
+        url: Vec<Loc>,
+    }
+    #[derive(Serialize)]
+    struct Loc {
+        loc: String,
+    }
+
+    let set = UrlSet {
+        xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9",
+        url: pages
+            .into_iter()
+            .map(|page| Loc {
+                loc: format!("{origin}{}", page.url()),
+            })
+            .collect(),
+    };
+
+    let mut writer = XmlWriter::new_with_indent(Vec::new(), b' ', 2);
+    writer
+        .write_event(XmlEvent::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("writing into a Vec cannot fail");
+    writer
+        .write_serializable("urlset", &set)
+        .expect("a urlset of strings always serializes");
+    File::new("application/xml; charset=utf-8", writer.into_inner())
 }
 
 /// The app's route **set**, for prerendering — which routes exist, computed from its data.
@@ -709,7 +745,7 @@ pub trait Files {
 /// ([`idyll_route::Route::url`]), so this trait is only the *set*, never the URL shape.
 pub trait Sitemap {
     /// The app's typed route identity.
-    type Route: idyll_route::Route;
+    type Route: Route;
     /// Every route to prerender, in any order.
     #[allow(async_fn_in_trait)]
     async fn routes(&self) -> Vec<Self::Route>;
@@ -734,10 +770,7 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap + Files> Server<Src> {
         let mut resolved = Vec::new();
         for route in self.data.routes().await {
             let url = route.url();
-            let file = self
-                .data
-                .file(&idyll_data::Request::new(url.as_str()))
-                .await;
+            let file = self.data.file(&Request::new(url.as_str())).await;
             resolved.push((url, file));
         }
         let destinations = prerender_destinations(&resolved)?;
@@ -868,19 +901,16 @@ impl<Src: Clone + Send + Sync + 'static + Sitemap + Files> Server<Src> {
 /// `<path>.html` (`/` → `index.html`). Segments are percent-decoded, so the name matches what
 /// a static server resolves the request path to. A segment that cannot name a file, or two
 /// routes landing on one name (hosts fold case), refuses the build.
-fn prerender_destinations(
-    resolved: &[(idyll_route::Url, Option<File>)],
-) -> anyhow::Result<Vec<PathBuf>> {
+fn prerender_destinations(resolved: &[(Url, Option<File>)]) -> anyhow::Result<Vec<PathBuf>> {
     anyhow::ensure!(!resolved.is_empty(), "prerender route set is empty");
     let mut taken = HashSet::new();
     resolved
         .iter()
         .map(|(url, file)| {
-            let segments = idyll_route::split_path(url.as_str())
+            let segments = split_path(url.as_str())
                 .into_iter()
                 .map(|segment| {
-                    let decoded =
-                        idyll_route::decode_segment(segment).context("route is not UTF-8")?;
+                    let decoded = decode_segment(segment).context("route is not UTF-8")?;
                     anyhow::ensure!(
                         !decoded.is_empty()
                             && decoded != "."
@@ -1708,7 +1738,7 @@ async fn page_endpoint<Src: Clone + Send + Sync + 'static + Files>(
     uri: axum::http::Uri,
     State(state): State<Arc<AppState<Src>>>,
 ) -> Response {
-    if let Some(file) = state.data.file(&idyll_data::Request::new(uri.path())).await {
+    if let Some(file) = state.data.file(&Request::new(uri.path())).await {
         let bytes = match file.bytes {
             Cow::Borrowed(bytes) => Bytes::from_static(bytes),
             Cow::Owned(bytes) => Bytes::from(bytes),
@@ -2149,19 +2179,14 @@ mod tests {
 
     #[test]
     fn prerender_rejects_colliding_and_unrepresentable_routes() {
-        let page = |url: &str| {
-            (
-                idyll_route::Url::from_segments(idyll_route::split_path(url)),
-                None,
-            )
-        };
+        let page = |url: &str| (Url::from_segments(split_path(url)), None);
         let file = |url: &str| {
             (
-                idyll_route::Url::from_segments(idyll_route::split_path(url)),
+                Url::from_segments(split_path(url)),
                 Some(File::new("text/plain", &b""[..])),
             )
         };
-        let doc = |slug: &str| (idyll_route::Url::from_segments([slug]), None);
+        let doc = |slug: &str| (Url::from_segments([slug]), None);
         assert!(prerender_destinations(&[]).is_err());
         assert!(prerender_destinations(&[page("/"), doc("index")]).is_err());
         assert!(prerender_destinations(&[doc("intro"), doc("INTRO")]).is_err());
@@ -2186,6 +2211,38 @@ mod tests {
                 PathBuf::from("static/icon.svg"),
             ]
         );
+    }
+
+    #[test]
+    fn the_sitemap_names_each_page_at_its_absolute_url() {
+        #[derive(Route)]
+        enum Route {
+            #[route("/")]
+            Index,
+            #[route("/{slug}")]
+            Doc { slug: String },
+        }
+        let file = sitemap(
+            "https://example.com",
+            [
+                Route::Index,
+                Route::Doc {
+                    slug: "a&b c".into(),
+                },
+            ],
+        );
+        assert_eq!(file.media_type, "application/xml; charset=utf-8");
+        let xml = String::from_utf8(file.bytes.into_owned()).unwrap();
+        let locs: Vec<&str> = xml
+            .split("<loc>")
+            .skip(1)
+            .filter_map(|rest| rest.split("</loc>").next())
+            .collect();
+        assert_eq!(
+            locs,
+            ["https://example.com/", "https://example.com/a%26b%20c"]
+        );
+        assert!(xml.starts_with("<?xml") && xml.trim_end().ends_with("</urlset>"));
     }
 
     #[test]

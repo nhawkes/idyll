@@ -37,6 +37,7 @@ oxc_span = "0.144.0"
 oxc_codegen = "0.144.0"
 oxc_minifier = "0.144.0"
 oxc_ast_visit = "0.144.0"
+quick-xml = { version = "0.42.0", features = ["serialize"] }
 
 [dev-dependencies]
 wat = "1"
